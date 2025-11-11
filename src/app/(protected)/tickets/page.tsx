@@ -6,6 +6,7 @@ import { format } from "date-fns";
 
 import { useAppShell } from "@/components/layout/app-shell";
 import { EditTicketDialog } from "@/components/tickets/edit-ticket-dialog";
+import { NewTicketDialog } from "@/components/tickets/new-ticket-dialog";
 import { SendMessageDialog } from "@/components/messages/send-message-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ export default function TicketsPage() {
   const { data, isLoading, error, refetch, isFetching } = useTicketsQuery(filters);
   const [ticketForMessage, setTicketForMessage] = useState<Ticket | null>(null);
   const [ticketForEdit, setTicketForEdit] = useState<Ticket | null>(null);
+  const [newTicketOpen, setNewTicketOpen] = useState(false);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
@@ -52,6 +54,8 @@ export default function TicketsPage() {
 
   return (
     <div className="space-y-6">
+      <NewTicketDialog open={newTicketOpen} onOpenChange={setNewTicketOpen} />
+
       <SendMessageDialog
         ticket={ticketForMessage}
         open={messageDialogOpen}
@@ -94,6 +98,9 @@ export default function TicketsPage() {
                 Refresh
               </>
             )}
+          </Button>
+          <Button onClick={() => setNewTicketOpen(true)} size="sm">
+            New Ticket
           </Button>
         </div>
       </div>
@@ -339,6 +346,12 @@ function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
             </span>
           </p>
         </div>
+
+        {ticket.notes ? (
+          <div className="max-h-24 overflow-y-auto rounded-md border bg-card/60 p-3 text-xs text-muted-foreground">
+            <p className="whitespace-pre-wrap text-foreground">{ticket.notes}</p>
+          </div>
+        ) : null}
 
         <div className="mt-auto flex flex-wrap gap-2">
           <Button variant="default" size="sm" className="flex-1" disabled>

@@ -102,6 +102,7 @@ type UpdateTicketVariables = {
   > & {
     locationId?: string;
     notes?: string | null;
+    checkInTime?: string;
   };
 };
 
@@ -121,6 +122,46 @@ export function useUpdateTicketMutation() {
         throw new Error(payload?.error ?? "Failed to update ticket");
       }
       return payload as { ticket: Ticket };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
+type CreateTicketVariables = {
+  ticketNumber: string;
+  customerName: string;
+  customerPhone: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleColor?: string | null;
+  licensePlate?: string | null;
+  parkingLocation?: string | null;
+  rateType: Ticket["rateType"];
+  inOutPrivileges?: boolean;
+  status?: Ticket["status"];
+  vehicleStatus?: Ticket["vehicleStatus"];
+  locationId: string;
+  notes?: string | null;
+  checkInTime?: string;
+};
+
+export function useCreateTicketMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: CreateTicketVariables) => {
+      const response = await fetch("/api/tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to create ticket");
+      }
+      return data as { ticket: Ticket };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });

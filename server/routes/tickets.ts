@@ -24,8 +24,26 @@ const updateSchema = z.object({
   vehicleStatus: z.enum(["WITH_US", "AWAY"]).optional(),
   notes: z.string().max(500).nullable().optional(),
   locationId: z.string().optional(),
+  checkInTime: z.string().optional(),
 });
 
+const createSchema = z.object({
+  ticketNumber: z.string().min(1).max(50),
+  customerName: z.string().min(1).max(120),
+  customerPhone: z.string().min(5).max(30),
+  vehicleMake: z.string().min(1).max(80),
+  vehicleModel: z.string().min(1).max(80),
+  vehicleColor: z.string().max(60).nullable().optional(),
+  licensePlate: z.string().max(40).nullable().optional(),
+  parkingLocation: z.string().max(80).nullable().optional(),
+  rateType: z.enum(["HOURLY", "OVERNIGHT"]),
+  inOutPrivileges: z.boolean().optional(),
+  status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"]).optional(),
+  vehicleStatus: z.enum(["WITH_US", "AWAY"]).optional(),
+  locationId: z.string(),
+  notes: z.string().max(500).nullable().optional(),
+  checkInTime: z.string().optional(),
+});
 function calculateProjectedAmount(ticket: {
   rateType: "HOURLY" | "OVERNIGHT";
   checkInTime: Date;
@@ -155,6 +173,87 @@ export function registerTicketRoutes(router: Router) {
     }
   });
 
+  router.post("/api/tickets", async (req, res) => {
+    const session = await resolveSession(req);
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid ticket data" });
+      return;
+    }
+
+    const data = parsed.data;
+
+    try {
+      const location = await prisma.location.findFirst({
+        where: { id: data.locationId, tenantId: session.tenantId },
+      });
+
+      if (!location) {
+        res.status(400).json({ error: "Invalid location" });
+        return;
+      }
+
+      const duplicateNumber = await prisma.ticket.findFirst({
+        where: {
+          tenantId: session.tenantId,
+          ticketNumber: data.ticketNumber,
+        },
+      });
+
+      if (duplicateNumber) {
+        res.status(400).json({ error: "Ticket number already exists" });
+        return;
+      }
+
+      const ticket = await prisma.ticket.create({
+        data: {
+          tenantId: session.tenantId,
+          locationId: data.locationId,
+          ticketNumber: data.ticketNumber,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          vehicleMake: data.vehicleMake,
+          vehicleModel: data.vehicleModel,
+          vehicleColor: data.vehicleColor ?? null,
+          licensePlate: data.licensePlate ?? null,
+          parkingLocation: data.parkingLocation ?? null,
+          rateType: data.rateType,
+          inOutPrivileges: data.inOutPrivileges ?? false,
+          status: data.status ?? "CHECKED_IN",
+          vehicleStatus: data.vehicleStatus ?? "WITH_US",
+          checkInTime: data.checkInTime ? new Date(data.checkInTime) : undefined,
+          notes: data.notes ?? null,
+        },
+        include: {
+          location: true,
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          tenantId: session.tenantId,
+          ticketId: ticket.id,
+          userId: session.userId ?? null,
+          action: "TICKET_CREATED",
+          details: {
+            ticketNumber: ticket.ticketNumber,
+            message: "Ticket created via API",
+          },
+        },
+      });
+
+      res.status(201).json({ ticket });
+    } catch (error) {
+      console.error("Failed to create ticket", error);
+      res.status(500).json({ error: "Failed to create ticket" });
+    }
+  });
+
   router.patch("/api/tickets/:id", async (req, res) => {
     const session = await resolveSession(req);
     if (!session) {
@@ -201,12 +300,21 @@ export function registerTicketRoutes(router: Router) {
       const updatedTicket = await prisma.ticket.update({
         where: { id: ticketId },
         data: updates,
+        include: {
+          location: true,
+        },
       });
 
       const changes: Record<string, { from: unknown; to: unknown }> = {};
       for (const [key, value] of Object.entries(updates)) {
         const previous = (existingTicket as Record<string, unknown>)[key];
-        if (previous !== value) {
+        if (previous instanceof Date || typeof value === "string" && key === "checkInTime") {
+          const previousIso = previous instanceof Date ? previous.toISOString() : previous;
+          const nextIso = value instanceof Date ? value.toISOString() : value;
+          if (previousIso !== nextIso) {
+            changes[key] = { from: previousIso ?? null, to: nextIso ?? null };
+          }
+        } else if (previous !== value) {
           changes[key] = { from: previous ?? null, to: value ?? null };
         }
       }

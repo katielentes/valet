@@ -6,8 +6,8 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import { useUpdateTicketMutation, type Ticket } from "@/hooks/use-tickets";
 import { useAppShell } from "@/components/layout/app-shell";
+import { useCreateTicketMutation } from "@/hooks/use-tickets";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
@@ -34,35 +33,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fromDateTimeInput, toDateTimeInputValue } from "@/lib/datetime";
 
 const formSchema = z.object({
-  customerName: z.string().min(1, "Enter customer name"),
-  customerPhone: z.string().min(5, "Enter phone number"),
-  vehicleMake: z.string().min(1, "Enter vehicle make"),
-  vehicleModel: z.string().min(1, "Enter vehicle model"),
+  ticketNumber: z.string().min(1, "Ticket number required"),
+  customerName: z.string().min(1, "Customer name required"),
+  customerPhone: z.string().min(5, "Customer phone required"),
+  vehicleMake: z.string().min(1, "Vehicle make required"),
+  vehicleModel: z.string().min(1, "Vehicle model required"),
   vehicleColor: z.string().optional(),
   licensePlate: z.string().optional(),
   parkingLocation: z.string().optional(),
+  locationId: z.string().min(1, "Select a location"),
   rateType: z.enum(["HOURLY", "OVERNIGHT"]),
   inOutPrivileges: z.enum(["yes", "no"]),
-  status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"]),
-  vehicleStatus: z.enum(["WITH_US", "AWAY"]),
-  locationId: z.string(),
+  status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP"]),
   notes: z.string().optional(),
   checkInTime: z.string(),
 });
 
-type EditTicketDialogProps = {
-  ticket: Ticket | null;
+type NewTicketDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialogProps) {
-  const updateTicket = useUpdateTicketMutation();
-  const { locations, locationsLoading } = useAppShell();
+export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
+  const { locations, locationsLoading, location: currentLocation } = useAppShell();
+  const createTicket = useCreateTicketMutation();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
     null
   );
@@ -74,61 +73,73 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
-    defaultValues: ticket
-      ? mapTicketToForm(ticket)
-      : {
-          customerName: "",
-          customerPhone: "",
-          vehicleMake: "",
-          vehicleModel: "",
-          vehicleColor: "",
-          licensePlate: "",
-          parkingLocation: "",
-          rateType: "HOURLY",
-          inOutPrivileges: "no",
-          status: "CHECKED_IN",
-          vehicleStatus: "WITH_US",
-          locationId: "",
-          notes: "",
-          checkInTime: toDateTimeInputValue(new Date()),
-        },
+    defaultValues: {
+      ticketNumber: "",
+      customerName: "",
+      customerPhone: "",
+      vehicleMake: "",
+      vehicleModel: "",
+      vehicleColor: "",
+      licensePlate: "",
+      parkingLocation: "",
+      locationId: "",
+      rateType: "HOURLY",
+      inOutPrivileges: "no",
+      status: "CHECKED_IN",
+      notes: "",
+      checkInTime: toDateTimeInputValue(new Date()),
+    },
   });
 
   useEffect(() => {
-    if (ticket) {
-      form.reset(mapTicketToForm(ticket));
-    }
-  }, [ticket, form]);
+    if (!open) return;
+    form.reset({
+      ticketNumber: "",
+      customerName: "",
+      customerPhone: "",
+      vehicleMake: "",
+      vehicleModel: "",
+      vehicleColor: "",
+      licensePlate: "",
+      parkingLocation: "",
+      locationId:
+        currentLocation !== "all" && locations.some((loc) => loc.id === currentLocation)
+          ? currentLocation
+          : "",
+      rateType: "HOURLY",
+      inOutPrivileges: "no",
+      status: "CHECKED_IN",
+      notes: "",
+      checkInTime: toDateTimeInputValue(new Date()),
+    });
+  }, [open, currentLocation, locations, form]);
 
   const onSubmit = form.handleSubmit(async (values) => {
-    if (!ticket) return;
     setFeedback(null);
     try {
-      await updateTicket.mutateAsync({
-        id: ticket.id,
-        data: {
-          customerName: values.customerName,
-          customerPhone: values.customerPhone,
-          vehicleMake: values.vehicleMake,
-          vehicleModel: values.vehicleModel,
-          vehicleColor: values.vehicleColor || null,
-          licensePlate: values.licensePlate || null,
-          parkingLocation: values.parkingLocation || null,
-          rateType: values.rateType,
-          inOutPrivileges: values.inOutPrivileges === "yes",
-          status: values.status,
-          vehicleStatus: values.vehicleStatus,
-          locationId: values.locationId,
-          notes: values.notes ?? null,
-          checkInTime: fromDateTimeInput(values.checkInTime) ?? undefined,
-        },
+      await createTicket.mutateAsync({
+        ticketNumber: values.ticketNumber,
+        customerName: values.customerName,
+        customerPhone: values.customerPhone,
+        vehicleMake: values.vehicleMake,
+        vehicleModel: values.vehicleModel,
+        vehicleColor: values.vehicleColor || null,
+        licensePlate: values.licensePlate || null,
+        parkingLocation: values.parkingLocation || null,
+        locationId: values.locationId,
+        rateType: values.rateType,
+        inOutPrivileges: values.inOutPrivileges === "yes",
+        status: values.status,
+        vehicleStatus: "WITH_US",
+      notes: values.notes || null,
+      checkInTime: fromDateTimeInput(values.checkInTime) ?? new Date().toISOString(),
       });
-      setFeedback({ type: "success", message: "Ticket updated." });
+      setFeedback({ type: "success", message: "Ticket created." });
       onOpenChange(false);
     } catch (error) {
       setFeedback({
         type: "error",
-        message: error instanceof Error ? error.message : "Failed to update ticket.",
+        message: error instanceof Error ? error.message : "Failed to create ticket.",
       });
     }
   });
@@ -137,14 +148,71 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Edit ticket</DialogTitle>
-          <DialogDescription>
-            Update ticket details. Changes are logged to the audit trail.
-          </DialogDescription>
+          <DialogTitle>New ticket</DialogTitle>
+          <DialogDescription>Capture customer and vehicle details to create a valet ticket.</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+            <div className="grid gap-4 md:grid-cols-3">
+              <FormField
+                control={form.control}
+                name="ticketNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ticket number</FormLabel>
+                    <FormControl>
+                      <Input placeholder="HAMP-2045" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="locationId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Location</FormLabel>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={locationsLoading}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locationOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ticket status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CHECKED_IN">Checked in</SelectItem>
+                        <SelectItem value="READY_FOR_PICKUP">Ready for pickup</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -172,6 +240,9 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   </FormItem>
                 )}
               />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="vehicleMake"
@@ -179,7 +250,7 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>Vehicle make</FormLabel>
                     <FormControl>
-                      <Input placeholder="Tesla" {...field} />
+                      <Input placeholder="BMW" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -192,7 +263,7 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>Vehicle model</FormLabel>
                     <FormControl>
-                      <Input placeholder="Model 3" {...field} />
+                      <Input placeholder="X5" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -205,7 +276,7 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>Vehicle color</FormLabel>
                     <FormControl>
-                      <Input placeholder="Blue" {...field} />
+                      <Input placeholder="Black" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -218,45 +289,7 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>License plate</FormLabel>
                     <FormControl>
-                      <Input placeholder="IL-VAL100" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="parkingLocation"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Parking location</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Deck A - Spot 12" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="locationId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Assigned location</FormLabel>
-                    <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={locationsLoading}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select location" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {locationOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Input placeholder="IL-VAL200" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -265,6 +298,19 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="parkingLocation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parking location</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Tower B - Spot 8" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="rateType"
@@ -303,46 +349,6 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Ticket status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CHECKED_IN">Checked in</SelectItem>
-                        <SelectItem value="READY_FOR_PICKUP">Ready for pickup</SelectItem>
-                        <SelectItem value="COMPLETED">Completed</SelectItem>
-                        <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="vehicleStatus"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vehicle status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="WITH_US">With us</SelectItem>
-                        <SelectItem value="AWAY">Away</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
 
             <FormField
@@ -366,7 +372,7 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                 <FormItem>
                   <FormLabel>Notes</FormLabel>
                   <FormControl>
-                    <Textarea rows={3} placeholder="Additional valet notes…" {...field} />
+                    <Textarea rows={3} placeholder="Special requests, damage notes..." {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -395,40 +401,21 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           <Button
             type="button"
             onClick={onSubmit}
-            disabled={updateTicket.isPending || locationsLoading}
+            disabled={createTicket.isPending || locationsLoading}
             className="gap-2"
           >
-            {updateTicket.isPending ? (
+            {createTicket.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Saving…
+                Creating…
               </>
             ) : (
-              "Save changes"
+              "Create ticket"
             )}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
-
-function mapTicketToForm(ticket: Ticket): z.infer<typeof formSchema> {
-  return {
-    customerName: ticket.customerName,
-    customerPhone: ticket.customerPhone,
-    vehicleMake: ticket.vehicleMake,
-    vehicleModel: ticket.vehicleModel,
-    vehicleColor: ticket.vehicleColor ?? "",
-    licensePlate: ticket.licensePlate ?? "",
-    parkingLocation: ticket.parkingLocation ?? "",
-    rateType: ticket.rateType,
-    inOutPrivileges: ticket.inOutPrivileges ? "yes" : "no",
-    status: ticket.status,
-    vehicleStatus: ticket.vehicleStatus,
-    locationId: ticket.location.id,
-    notes: ticket.notes ?? "",
-    checkInTime: toDateTimeInputValue(ticket.checkInTime),
-  };
 }
 

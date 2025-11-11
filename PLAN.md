@@ -53,6 +53,7 @@
 - [x] Build protected navigation shell (sidebar, topbar, responsive actions).
 - [x] Implement Active Tickets dashboard with live data bindings.
 - [x] Deliver outbound messaging (Twilio send flow, templates, ticket logging).
+- [x] Implement ticket creation & editing (forms, API, audit logging).
 - [ ] Implement payment workflows in UI (Stripe link integration & projected billing).
 
 ## Progress Log
@@ -67,6 +68,7 @@
 - **2025-11-11** — Implemented Active Tickets dashboard with Express-backed API, TanStack Query hooks, metrics summary, and responsive ticket cards using shadcn UI.
 - **2025-11-11** — Added Twilio-backed messaging service with Express endpoints, template picker, ticket history, and “Notify Customer” workflow in Active Tickets.
 - **2025-11-11** — Enabled ticket editing with audit logging, dynamic location filters tied to tenant data, and Prisma-backed update APIs.
+- **2025-11-11** — Delivered ticket creation modal with live location defaults, Prisma create endpoint, and audit logging for new tickets.
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.
