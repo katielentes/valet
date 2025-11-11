@@ -1,0 +1,415 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+import { useUpdateTicketMutation, type Ticket } from "@/hooks/use-tickets";
+import { useAppShell } from "@/components/layout/app-shell";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+const formSchema = z.object({
+  customerName: z.string().min(1, "Enter customer name"),
+  customerPhone: z.string().min(5, "Enter phone number"),
+  vehicleMake: z.string().min(1, "Enter vehicle make"),
+  vehicleModel: z.string().min(1, "Enter vehicle model"),
+  vehicleColor: z.string().optional(),
+  licensePlate: z.string().optional(),
+  parkingLocation: z.string().optional(),
+  rateType: z.enum(["HOURLY", "OVERNIGHT"]),
+  inOutPrivileges: z.enum(["yes", "no"]),
+  status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"]),
+  vehicleStatus: z.enum(["WITH_US", "AWAY"]),
+  locationId: z.string(),
+  notes: z.string().optional(),
+});
+
+type EditTicketDialogProps = {
+  ticket: Ticket | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialogProps) {
+  const updateTicket = useUpdateTicketMutation();
+  const { locations, locationsLoading } = useAppShell();
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
+    null
+  );
+
+  const locationOptions = useMemo(
+    () => locations.map((loc) => ({ value: loc.id, label: loc.name })),
+    [locations]
+  );
+
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: ticket
+      ? mapTicketToForm(ticket)
+      : {
+          customerName: "",
+          customerPhone: "",
+          vehicleMake: "",
+          vehicleModel: "",
+          vehicleColor: "",
+          licensePlate: "",
+          parkingLocation: "",
+          rateType: "HOURLY",
+          inOutPrivileges: "no",
+          status: "CHECKED_IN",
+          vehicleStatus: "WITH_US",
+          locationId: "",
+          notes: "",
+        },
+  });
+
+  useEffect(() => {
+    if (ticket) {
+      form.reset(mapTicketToForm(ticket));
+    }
+  }, [ticket, form]);
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    if (!ticket) return;
+    setFeedback(null);
+    try {
+      await updateTicket.mutateAsync({
+        id: ticket.id,
+        data: {
+          customerName: values.customerName,
+          customerPhone: values.customerPhone,
+          vehicleMake: values.vehicleMake,
+          vehicleModel: values.vehicleModel,
+          vehicleColor: values.vehicleColor || null,
+          licensePlate: values.licensePlate || null,
+          parkingLocation: values.parkingLocation || null,
+          rateType: values.rateType,
+          inOutPrivileges: values.inOutPrivileges === "yes",
+          status: values.status,
+          vehicleStatus: values.vehicleStatus,
+          locationId: values.locationId,
+          notes: values.notes ?? null,
+        },
+      });
+      setFeedback({ type: "success", message: "Ticket updated." });
+      onOpenChange(false);
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to update ticket.",
+      });
+    }
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Edit ticket</DialogTitle>
+          <DialogDescription>
+            Update ticket details. Changes are logged to the audit trail.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="customerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Customer name</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Jordan Price" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="customerPhone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Customer phone</FormLabel>
+                    <FormControl>
+                      <Input placeholder="+13125550100" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="vehicleMake"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vehicle make</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Tesla" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="vehicleModel"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vehicle model</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Model 3" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="vehicleColor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vehicle color</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Blue" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="licensePlate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>License plate</FormLabel>
+                    <FormControl>
+                      <Input placeholder="IL-VAL100" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="parkingLocation"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Parking location</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Deck A - Spot 12" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="locationId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assigned location</FormLabel>
+                    <FormControl>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={locationsLoading}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {locationOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="rateType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Rate type</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="HOURLY">Hourly</SelectItem>
+                        <SelectItem value="OVERNIGHT">Overnight</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="inOutPrivileges"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>In/out privileges</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">Yes</SelectItem>
+                        <SelectItem value="no">No</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ticket status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="CHECKED_IN">Checked in</SelectItem>
+                        <SelectItem value="READY_FOR_PICKUP">Ready for pickup</SelectItem>
+                        <SelectItem value="COMPLETED">Completed</SelectItem>
+                        <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="vehicleStatus"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vehicle status</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WITH_US">With us</SelectItem>
+                        <SelectItem value="AWAY">Away</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notes</FormLabel>
+                  <FormControl>
+                    <Textarea rows={3} placeholder="Additional valet notes…" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+
+        {feedback ? (
+          <div
+            className={cn(
+              "rounded-md border p-2 text-sm",
+              feedback.type === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-destructive/40 bg-destructive/10 text-destructive"
+            )}
+          >
+            {feedback.message}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={onSubmit}
+            disabled={updateTicket.isPending || locationsLoading}
+            className="gap-2"
+          >
+            {updateTicket.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              "Save changes"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function mapTicketToForm(ticket: Ticket): z.infer<typeof formSchema> {
+  return {
+    customerName: ticket.customerName,
+    customerPhone: ticket.customerPhone,
+    vehicleMake: ticket.vehicleMake,
+    vehicleModel: ticket.vehicleModel,
+    vehicleColor: ticket.vehicleColor ?? "",
+    licensePlate: ticket.licensePlate ?? "",
+    parkingLocation: ticket.parkingLocation ?? "",
+    rateType: ticket.rateType,
+    inOutPrivileges: ticket.inOutPrivileges ? "yes" : "no",
+    status: ticket.status,
+    vehicleStatus: ticket.vehicleStatus,
+    locationId: ticket.location.id,
+    notes: ticket.notes ?? "",
+  };
+}
+

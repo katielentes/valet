@@ -34,22 +34,19 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { useLocations, type LocationRecord } from "@/hooks/use-locations";
 
 type AppShellProps = {
   session: SessionPayload;
   children: React.ReactNode;
 };
 
-const DEMO_LOCATIONS = [
-  { value: "all", label: "All Locations" },
-  { value: "hampton", label: "Hampton Inn" },
-  { value: "hyatt", label: "Hyatt Regency" },
-];
-
 type AppShellContextValue = {
   session: SessionPayload;
   location: string;
   setLocation: (value: string) => void;
+  locations: LocationRecord[];
+  locationsLoading: boolean;
 };
 
 const AppShellContext = createContext<AppShellContextValue | undefined>(undefined);
@@ -64,19 +61,30 @@ export function useAppShell() {
 
 export function AppShell({ session, children }: AppShellProps) {
   const [location, setLocation] = useState("all");
+  const { data: locationsData, isLoading: locationsLoading } = useLocations();
+  const locations = useMemo(
+    () => locationsData?.locations ?? [],
+    [locationsData]
+  );
+  const effectiveLocation = useMemo(() => {
+    if (location === "all") return "all";
+    return locations.some((loc) => loc.id === location) ? location : "all";
+  }, [location, locations]);
 
   return (
-    <AppShellContext.Provider value={{ session, location, setLocation }}>
+    <AppShellContext.Provider
+      value={{ session, location: effectiveLocation, setLocation, locations, locationsLoading }}
+    >
       <div className="flex min-h-screen w-full bg-muted/40">
         <DesktopSidebar
           session={session}
-          location={location}
+          location={effectiveLocation}
           onLocationChange={setLocation}
         />
         <div className="flex min-h-screen flex-1 flex-col">
           <Topbar
             session={session}
-            location={location}
+            location={effectiveLocation}
             onLocationChange={setLocation}
           />
           <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
@@ -90,16 +98,18 @@ type LocationSelectProps = {
   value: string;
   onChange: (value: string) => void;
   className?: string;
+  disabled?: boolean;
+  options: { value: string; label: string }[];
 };
 
-function LocationSelect({ value, onChange, className }: LocationSelectProps) {
+function LocationSelect({ value, onChange, className, disabled, options }: LocationSelectProps) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger className={cn("w-full justify-between", className)}>
         <SelectValue placeholder="Select location" />
       </SelectTrigger>
       <SelectContent align="start">
-        {DEMO_LOCATIONS.map((option) => (
+        {options.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             {option.label}
           </SelectItem>
@@ -117,6 +127,14 @@ type SidebarProps = {
 
 function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
   const pathname = usePathname();
+  const { locations, locationsLoading } = useAppShell();
+  const locationOptions = useMemo(
+    () => [
+      { value: "all", label: "All Locations" },
+      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
+    ],
+    [locations]
+  );
 
   return (
     <aside className="hidden w-[260px] flex-col border-r bg-white/70 p-4 lg:flex lg:w-[280px]">
@@ -134,9 +152,14 @@ function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
         <CardHeader className="space-y-2">
           <CardTitle className="text-base font-semibold">Locations</CardTitle>
           <CardDescription className="text-xs text-muted-foreground">
-            Switch between Hampton and Hyatt to update ticket views.
+            Filter dashboards by valet location to focus your team.
           </CardDescription>
-          <LocationSelect value={location} onChange={onLocationChange} />
+          <LocationSelect
+            value={location}
+            onChange={onLocationChange}
+            options={locationOptions}
+            disabled={locationsLoading}
+          />
         </CardHeader>
       </Card>
 
@@ -214,9 +237,17 @@ type TopbarProps = {
 
 function Topbar({ session, location, onLocationChange }: TopbarProps) {
   const pathname = usePathname();
+  const { locations, locationsLoading } = useAppShell();
   const activeItem = useMemo(
     () => NAV_ITEMS.find((item) => pathname?.startsWith(item.href)) ?? NAV_ITEMS[0],
     [pathname]
+  );
+  const locationOptions = useMemo(
+    () => [
+      { value: "all", label: "All Locations" },
+      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
+    ],
+    [locations]
   );
 
   return (
@@ -244,6 +275,8 @@ function Topbar({ session, location, onLocationChange }: TopbarProps) {
             value={location}
             onChange={onLocationChange}
             className="hidden lg:flex lg:w-48"
+            options={locationOptions}
+            disabled={locationsLoading}
           />
         </div>
 
@@ -267,6 +300,14 @@ function MobileSidebarTrigger({
   onLocationChange,
 }: MobileSidebarTriggerProps) {
   const pathname = usePathname();
+  const { locations, locationsLoading } = useAppShell();
+  const locationOptions = useMemo(
+    () => [
+      { value: "all", label: "All Locations" },
+      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
+    ],
+    [locations]
+  );
 
   return (
     <Sheet>
@@ -285,7 +326,13 @@ function MobileSidebarTrigger({
         <div className="mt-4 space-y-4">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Locations</p>
-            <LocationSelect value={location} onChange={onLocationChange} className="mt-2" />
+            <LocationSelect
+              value={location}
+              onChange={onLocationChange}
+              className="mt-2"
+              options={locationOptions}
+              disabled={locationsLoading}
+            />
           </div>
           <Separator />
           <div className="space-y-1">

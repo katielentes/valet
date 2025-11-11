@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type Ticket = {
   id: string;
@@ -20,6 +20,7 @@ export type Ticket = {
   checkInTime: string;
   projectedAmountCents: number;
   elapsedHours: number;
+  notes?: string | null;
   location: {
     id: string;
     name: string;
@@ -78,6 +79,52 @@ export function useTicketsQuery(filters: TicketFilters) {
     queryKey,
     queryFn: () => fetchTickets(filters),
     staleTime: 1000 * 30,
+  });
+}
+
+type UpdateTicketVariables = {
+  id: string;
+  data: Partial<
+    Pick<
+      Ticket,
+      | "customerName"
+      | "customerPhone"
+      | "vehicleMake"
+      | "vehicleModel"
+      | "vehicleColor"
+      | "licensePlate"
+      | "parkingLocation"
+      | "rateType"
+      | "inOutPrivileges"
+      | "status"
+      | "vehicleStatus"
+    >
+  > & {
+    locationId?: string;
+    notes?: string | null;
+  };
+};
+
+export function useUpdateTicketMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: UpdateTicketVariables) => {
+      const response = await fetch(`/api/tickets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Failed to update ticket");
+      }
+      return payload as { ticket: Ticket };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
   });
 }
 

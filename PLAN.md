@@ -66,6 +66,7 @@
 - **2025-11-11** — Built responsive navigation shell (sidebar, topbar, mobile drawer) with location selector, search stub, notifications, and user summary leveraging shadcn components.
 - **2025-11-11** — Implemented Active Tickets dashboard with Express-backed API, TanStack Query hooks, metrics summary, and responsive ticket cards using shadcn UI.
 - **2025-11-11** — Added Twilio-backed messaging service with Express endpoints, template picker, ticket history, and “Notify Customer” workflow in Active Tickets.
+- **2025-11-11** — Enabled ticket editing with audit logging, dynamic location filters tied to tenant data, and Prisma-backed update APIs.
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.

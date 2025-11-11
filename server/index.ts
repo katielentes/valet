@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 import express from "express";
 import next from "next";
 import { compareSync } from "bcryptjs";
@@ -13,6 +15,7 @@ import {
 } from "./lib/session";
 import { registerTicketRoutes } from "./routes/tickets";
 import { registerMessageRoutes } from "./routes/messages";
+import { registerLocationRoutes } from "./routes/locations";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
@@ -40,6 +43,7 @@ async function bootstrap() {
 
   registerTicketRoutes(server);
   registerMessageRoutes(server);
+  registerLocationRoutes(server);
 
   server.get("/api/auth/session", async (req, res) => {
     try {

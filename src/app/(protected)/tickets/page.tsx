@@ -5,6 +5,7 @@ import { Loader2, RefreshCcw, Filter } from "lucide-react";
 import { format } from "date-fns";
 
 import { useAppShell } from "@/components/layout/app-shell";
+import { EditTicketDialog } from "@/components/tickets/edit-ticket-dialog";
 import { SendMessageDialog } from "@/components/messages/send-message-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,23 +35,41 @@ export default function TicketsPage() {
   }, [activeFilter, location]);
 
   const { data, isLoading, error, refetch, isFetching } = useTicketsQuery(filters);
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [ticketForMessage, setTicketForMessage] = useState<Ticket | null>(null);
+  const [ticketForEdit, setTicketForEdit] = useState<Ticket | null>(null);
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const handleOpenSendDialog = (ticket: Ticket) => {
-    setSelectedTicket(ticket);
-    setSendDialogOpen(true);
+    setTicketForMessage(ticket);
+    setMessageDialogOpen(true);
+  };
+
+  const handleOpenEditDialog = (ticket: Ticket) => {
+    setTicketForEdit(ticket);
+    setEditDialogOpen(true);
   };
 
   return (
     <div className="space-y-6">
       <SendMessageDialog
-        ticket={selectedTicket}
-        open={sendDialogOpen}
+        ticket={ticketForMessage}
+        open={messageDialogOpen}
         onOpenChange={(open) => {
-          setSendDialogOpen(open);
+          setMessageDialogOpen(open);
           if (!open) {
-            setSelectedTicket(null);
+            setTicketForMessage(null);
+          }
+        }}
+      />
+
+      <EditTicketDialog
+        ticket={ticketForEdit}
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) {
+            setTicketForEdit(null);
           }
         }}
       />
@@ -121,6 +140,7 @@ export default function TicketsPage() {
         loading={isLoading}
         tickets={data?.tickets ?? []}
         onNotify={handleOpenSendDialog}
+        onEdit={handleOpenEditDialog}
       />
     </div>
   );
@@ -186,9 +206,10 @@ type TicketResultsProps = {
   loading: boolean;
   tickets: Ticket[];
   onNotify: (ticket: Ticket) => void;
+  onEdit: (ticket: Ticket) => void;
 };
 
-function TicketResults({ loading, tickets, onNotify }: TicketResultsProps) {
+function TicketResults({ loading, tickets, onNotify, onEdit }: TicketResultsProps) {
   if (loading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -221,7 +242,7 @@ function TicketResults({ loading, tickets, onNotify }: TicketResultsProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {tickets.map((ticket) => (
-        <TicketCard key={ticket.id} ticket={ticket} onNotify={onNotify} />
+        <TicketCard key={ticket.id} ticket={ticket} onNotify={onNotify} onEdit={onEdit} />
       ))}
     </div>
   );
@@ -230,9 +251,10 @@ function TicketResults({ loading, tickets, onNotify }: TicketResultsProps) {
 type TicketCardProps = {
   ticket: Ticket;
   onNotify: (ticket: Ticket) => void;
+  onEdit: (ticket: Ticket) => void;
 };
 
-function TicketCard({ ticket, onNotify }: TicketCardProps) {
+function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
   const projectedAmount = `$${(ticket.projectedAmountCents / 100).toFixed(2)}`;
   const rateBadge =
     ticket.rateType === "OVERNIGHT" ? (
@@ -330,8 +352,8 @@ function TicketCard({ ticket, onNotify }: TicketCardProps) {
           >
             Notify Customer
           </Button>
-          <Button variant="ghost" size="sm" className="w-full" disabled>
-            View Details
+          <Button variant="ghost" size="sm" className="w-full" onClick={() => onEdit(ticket)}>
+            Edit Ticket
           </Button>
         </div>
       </CardContent>
