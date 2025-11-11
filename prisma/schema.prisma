@@ -1,0 +1,261 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations Location[]
+  users     User[]
+  tickets   Ticket[]
+  messages  Message[]
+  messageTemplates MessageTemplate[]
+  payments  Payment[]
+  reports   Report[]
+  auditLogs AuditLog[]
+  sessions  Session[]
+}
+
+model User {
+  id             String        @id @default(cuid())
+  tenantId       String
+  email          String        @unique
+  name           String
+  hashedPassword String
+  role           UserRole      @default(STAFF)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tickets  Ticket[] @relation("TicketAssignedUser")
+  comments TicketComment[]
+  auditLogs AuditLog[]
+  sessions Session[]
+}
+
+model Location {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  name               String
+  identifier         String
+  hourlyRateCents    Int
+  hourlyTierHours    Int?
+  overnightRateCents Int
+  taxRateBasisPoints Int     @default(2325) // example: 23.25% => 2325
+  hotelSharePoints   Int     @default(500)  // example: 5% => 500
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+  reports Report[]
+
+  @@unique([tenantId, identifier])
+}
+
+model Ticket {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  locationId         String
+  ticketNumber       String
+  customerName       String
+  customerPhone      String
+  vehicleMake        String
+  vehicleModel       String
+  vehicleColor       String?
+  licensePlate       String?
+  parkingLocation    String?
+  rateType           RateType
+  inOutPrivileges    Boolean        @default(false)
+  status             TicketStatus   @default(CHECKED_IN)
+  vehicleStatus      VehicleStatus  @default(WITH_US)
+  checkInTime        DateTime       @default(now())
+  checkOutTime       DateTime?
+  amountPaidCents    Int            @default(0)
+  assignedUserId     String?
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location      Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  assignedUser  User?    @relation("TicketAssignedUser", fields: [assignedUserId], references: [id])
+  messages      Message[]
+  payments      Payment[]
+  auditLogs     AuditLog[]
+  comments      TicketComment[]
+
+  @@unique([tenantId, ticketNumber])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  ticketId       String
+  tenantId       String
+  direction      MessageDirection
+  body           String
+  templateId     String?
+  sentAt         DateTime @default(now())
+  deliveryStatus MessageStatus @default(SENT)
+  metadata       Json?
+
+  ticket   Ticket          @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template MessageTemplate? @relation(fields: [templateId], references: [id])
+}
+
+model MessageTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([tenantId, name])
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  ticketId      String
+  tenantId      String
+  stripeLinkId  String
+  stripeProduct String
+  amountCents   Int
+  status        PaymentStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  completedAt   DateTime?
+  metadata      Json?
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model Report {
+  id          String       @id @default(cuid())
+  tenantId    String
+  locationId  String?
+  periodType  ReportPeriod
+  periodStart DateTime
+  periodEnd   DateTime
+  data        Json
+  createdAt   DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id])
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  tenantId  String
+  ticketId  String
+  userId    String?
+  action    AuditAction
+  details   Json?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+}
+
+model TicketComment {
+  id        String   @id @default(cuid())
+  ticketId  String
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  tokenHash  String   @unique
+  userAgent  String?
+  ipAddress  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum RateType {
+  HOURLY
+  OVERNIGHT
+}
+
+enum TicketStatus {
+  CHECKED_IN
+  READY_FOR_PICKUP
+  COMPLETED
+  CANCELLED
+}
+
+enum VehicleStatus {
+  WITH_US
+  AWAY
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageStatus {
+  SENT
+  FAILED
+  DELIVERED
+  RECEIVED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum ReportPeriod {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum AuditAction {
+  TICKET_CREATED
+  TICKET_UPDATED
+  STATUS_CHANGED
+  VEHICLE_STATUS_CHANGED
+  MESSAGE_SENT
+  PAYMENT_LINK_SENT
+  PAYMENT_COMPLETED
+  REPORT_GENERATED
+  COMMENT_ADDED
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  STAFF
+}
