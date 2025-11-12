@@ -36,6 +36,7 @@ model User {
   name           String
   hashedPassword String
   role           UserRole      @default(STAFF)
+  locationId     String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -44,6 +45,7 @@ model User {
   comments TicketComment[]
   auditLogs AuditLog[]
   sessions Session[]
+  location Location? @relation("LocationUsers", fields: [locationId], references: [id])
 }
 
 model Location {
@@ -62,6 +64,7 @@ model Location {
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tickets Ticket[]
   reports Report[]
+  users   User[]   @relation("LocationUsers")
 
   @@unique([tenantId, identifier])
 }

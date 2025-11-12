@@ -78,6 +78,14 @@ export default function DashboardPage() {
               <span className="text-muted-foreground">Tenant ID</span>
               <span className="font-mono text-xs">{data.user.tenantId}</span>
             </div>
+            {data.user.location ? (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Assigned Location</span>
+                <Badge variant="outline" className="capitalize">
+                  {data.user.location.name}
+                </Badge>
+              </div>
+            ) : null}
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Session expires</span>
               <span>{new Date(data.expiresAt).toLocaleString()}</span>

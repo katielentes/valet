@@ -16,6 +16,7 @@ import {
 import { registerTicketRoutes } from "./routes/tickets";
 import { registerMessageRoutes } from "./routes/messages";
 import { registerLocationRoutes } from "./routes/locations";
+import { registerPaymentRoutes } from "./routes/payments";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
@@ -44,6 +45,7 @@ async function bootstrap() {
   registerTicketRoutes(server);
   registerMessageRoutes(server);
   registerLocationRoutes(server);
+  registerPaymentRoutes(server);
 
   server.get("/api/auth/session", async (req, res) => {
     try {
@@ -61,6 +63,13 @@ async function bootstrap() {
           email: session.user.email,
           role: session.user.role,
           tenantId: session.user.tenantId,
+          location: session.user.location
+            ? {
+                id: session.user.location.id,
+                name: session.user.location.name,
+                identifier: session.user.location.identifier,
+              }
+            : null,
         },
         tenant: {
           id: session.tenant.id,
@@ -88,7 +97,7 @@ async function bootstrap() {
     try {
       const user = await prisma.user.findUnique({
         where: { email },
-        include: { tenant: true },
+        include: { tenant: true, location: true },
       });
 
       if (!user || !compareSync(password, user.hashedPassword)) {
@@ -117,6 +126,13 @@ async function bootstrap() {
           email: user.email,
           role: user.role,
           tenantId: user.tenantId,
+          location: user.location
+            ? {
+                id: user.location.id,
+                name: user.location.name,
+                identifier: user.location.identifier,
+              }
+            : null,
         },
         tenant: {
           id: user.tenant.id,

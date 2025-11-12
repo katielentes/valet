@@ -105,6 +105,11 @@ async function main() {
     },
   });
 
+  await prisma.user.update({
+    where: { id: staff.id },
+    data: { locationId: hampton.id },
+  });
+
   const hyatt = await prisma.location.upsert({
     where: {
       tenantId_identifier: {
@@ -303,18 +308,189 @@ async function main() {
     where: { id: "seed-payment-hampton" },
     update: {
       amountCents: 2000,
-      status: PaymentStatus.PENDING,
+      status: PaymentStatus.COMPLETED,
       stripeLinkId: "plink_hampton_123",
       stripeProduct: "hampton-3-hours",
+      metadata: {
+        note: "Prepaid 3-hour stay",
+      },
     },
     create: {
       id: "seed-payment-hampton",
       ticketId: hamptonTicket.id,
       tenantId: tenant.id,
       amountCents: 2000,
-      status: PaymentStatus.PENDING,
+      status: PaymentStatus.COMPLETED,
       stripeLinkId: "plink_hampton_123",
       stripeProduct: "hampton-3-hours",
+      metadata: {
+        note: "Prepaid 3-hour stay",
+      },
+    },
+  });
+
+  // Additional Hampton tickets for scenario coverage
+  await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1002",
+      customerName: "Alex Morgan",
+      customerPhone: "+13125550300",
+      vehicleMake: "Audi",
+      vehicleModel: "Q5",
+      vehicleColor: "Silver",
+      licensePlate: "IL-VAL201",
+      parkingLocation: "Deck A - Spot 14",
+      rateType: RateType.HOURLY,
+      inOutPrivileges: false,
+      status: TicketStatus.CHECKED_IN,
+      vehicleStatus: VehicleStatus.WITH_US,
+      checkInTime: new Date(now.getTime() - 1000 * 60 * 45), // 45 minutes ago
+      notes: "Prefers phone call on pickup.",
+    },
+  });
+
+  await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1003",
+      customerName: "Morgan Lee",
+      customerPhone: "+13125550400",
+      vehicleMake: "Toyota",
+      vehicleModel: "Camry",
+      vehicleColor: "White",
+      licensePlate: "IL-VAL202",
+      parkingLocation: "Deck B - Spot 4",
+      rateType: RateType.HOURLY,
+      inOutPrivileges: false,
+      status: TicketStatus.CHECKED_IN,
+      vehicleStatus: VehicleStatus.WITH_US,
+      checkInTime: new Date(now.getTime() - 1000 * 60 * 90), // 1.5 hours ago
+      notes: "Has luggage in trunk.",
+    },
+  });
+
+  const hamptonTicket4 = await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1004",
+      customerName: "Jamie Chen",
+      customerPhone: "+13125550500",
+      vehicleMake: "Honda",
+      vehicleModel: "Civic",
+      vehicleColor: "Black",
+      licensePlate: "IL-VAL203",
+      parkingLocation: "Deck A - Spot 5",
+      rateType: RateType.HOURLY,
+      inOutPrivileges: true,
+      status: TicketStatus.READY_FOR_PICKUP,
+      vehicleStatus: VehicleStatus.AWAY,
+      checkInTime: new Date(now.getTime() - 1000 * 60 * 60 * 5), // 5 hours ago
+      notes: "Guest at conference center.",
+    },
+  });
+
+  const hamptonTicket5 = await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1005",
+      customerName: "Chris Alvarez",
+      customerPhone: "+13125550600",
+      vehicleMake: "Ford",
+      vehicleModel: "Explorer",
+      vehicleColor: "Blue",
+      licensePlate: "IL-VAL204",
+      parkingLocation: "Deck C - Spot 9",
+      rateType: RateType.OVERNIGHT,
+      inOutPrivileges: true,
+      status: TicketStatus.READY_FOR_PICKUP,
+      vehicleStatus: VehicleStatus.AWAY,
+      checkInTime: new Date(now.getTime() - 1000 * 60 * 60 * 20), // 20 hours ago
+      notes: "Returning at 7 PM.",
+    },
+  });
+
+  const hamptonTicket6 = await prisma.ticket.create({
+    data: {
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1006",
+      customerName: "Taylor Grant",
+      customerPhone: "+13125550700",
+      vehicleMake: "Subaru",
+      vehicleModel: "Outback",
+      vehicleColor: "Green",
+      licensePlate: "IL-VAL205",
+      parkingLocation: "Deck B - Spot 10",
+      rateType: RateType.OVERNIGHT,
+      inOutPrivileges: false,
+      status: TicketStatus.CHECKED_IN,
+      vehicleStatus: VehicleStatus.WITH_US,
+      checkInTime: new Date(now.getTime() - 1000 * 60 * 60 * 8), // 8 hours ago
+      notes: "VIP guest, keep near exit.",
+    },
+  });
+
+  // Payments for new tickets
+  await prisma.payment.create({
+    data: {
+      ticketId: hamptonTicket4.id,
+      tenantId: tenant.id,
+      amountCents: 3000,
+      status: PaymentStatus.COMPLETED,
+      stripeLinkId: "plink_hampton_1004",
+      stripeProduct: "hampton-hourly",
+    },
+  });
+
+  await prisma.payment.create({
+    data: {
+      ticketId: hamptonTicket5.id,
+      tenantId: tenant.id,
+      amountCents: 5500,
+      status: PaymentStatus.COMPLETED,
+      stripeLinkId: "plink_hampton_overnight_1005",
+      stripeProduct: "hampton-overnight",
+    },
+  });
+
+  await prisma.payment.create({
+    data: {
+      ticketId: hamptonTicket6.id,
+      tenantId: tenant.id,
+      amountCents: 4800,
+      status: PaymentStatus.COMPLETED,
+      stripeLinkId: "plink_hampton_paid_1006",
+      stripeProduct: "hampton-overnight",
+    },
+  });
+
+  await prisma.payment.upsert({
+    where: { id: "seed-payment-hyatt" },
+    update: {
+      amountCents: 5500,
+      status: PaymentStatus.COMPLETED,
+      stripeLinkId: "plink_hyatt_overnight",
+      stripeProduct: "hyatt-overnight",
+      metadata: {
+        note: "Overnight stay settled at check-in",
+      },
+    },
+    create: {
+      id: "seed-payment-hyatt",
+      ticketId: hyattTicket.id,
+      tenantId: tenant.id,
+      amountCents: 5500,
+      status: PaymentStatus.COMPLETED,
+      stripeLinkId: "plink_hyatt_overnight",
+      stripeProduct: "hyatt-overnight",
+      metadata: {
+        note: "Overnight stay settled at check-in",
+      },
     },
   });
 

@@ -12,6 +12,35 @@ export function registerLocationRoutes(router: Router) {
     }
 
     try {
+      if (session.user.role === "STAFF") {
+        if (!session.user.locationId) {
+          res.status(403).json({ error: "User is not assigned to a location" });
+          return;
+        }
+
+        const location = await prisma.location.findFirst({
+          where: { tenantId: session.tenantId, id: session.user.locationId },
+        });
+
+        res.json({
+          locations: location
+            ? [
+                {
+                  id: location.id,
+                  name: location.name,
+                  identifier: location.identifier,
+                  taxRateBasisPoints: location.taxRateBasisPoints,
+                  hotelSharePoints: location.hotelSharePoints,
+                  hourlyRateCents: location.hourlyRateCents,
+                  hourlyTierHours: location.hourlyTierHours,
+                  overnightRateCents: location.overnightRateCents,
+                },
+              ]
+            : [],
+        });
+        return;
+      }
+
       const locations = await prisma.location.findMany({
         where: { tenantId: session.tenantId },
         orderBy: { name: "asc" },

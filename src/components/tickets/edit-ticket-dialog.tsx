@@ -5,17 +5,11 @@ import { Loader2 } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 
 import { useUpdateTicketMutation, type Ticket } from "@/hooks/use-tickets";
 import { useAppShell } from "@/components/layout/app-shell";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -62,10 +56,8 @@ type EditTicketDialogProps = {
 
 export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialogProps) {
   const updateTicket = useUpdateTicketMutation();
-  const { locations, locationsLoading } = useAppShell();
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
-    null
-  );
+  const { locations, locationsLoading, role } = useAppShell();
+  const [feedback, setFeedback] = useState<{ type: "error"; message: string } | null>(null);
 
   const locationOptions = useMemo(
     () => locations.map((loc) => ({ value: loc.id, label: loc.name })),
@@ -123,8 +115,8 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           checkInTime: fromDateTimeInput(values.checkInTime) ?? undefined,
         },
       });
-      setFeedback({ type: "success", message: "Ticket updated." });
-      onOpenChange(false);
+      toast.success(`Ticket ${ticket.ticketNumber} updated`);
+      handleDialogOpenChange(false);
     } catch (error) {
       setFeedback({
         type: "error",
@@ -133,18 +125,28 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
     }
   });
 
+  const handleDialogOpenChange = (value: boolean) => {
+    if (!value) {
+      setFeedback(null);
+    }
+    onOpenChange(value);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Edit ticket</DialogTitle>
-          <DialogDescription>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent className="flex max-h-[min(90vh,720px)] max-w-3xl flex-col overflow-hidden p-0 sm:p-0">
+        <div className="sticky top-0 z-10 border-b bg-card/95 px-6 pb-4 pt-5 backdrop-blur">
+          <DialogTitle className="text-lg font-semibold">Edit ticket</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
             Update ticket details. Changes are logged to the audit trail.
           </DialogDescription>
-        </DialogHeader>
+        </div>
 
         <Form {...form}>
-          <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+          <form
+            className="flex-1 overflow-y-auto px-6 pb-32 pt-6 [scrollbar-width:thin]"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -245,7 +247,11 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>Assigned location</FormLabel>
                     <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={locationsLoading}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={locationsLoading || role === "STAFF"}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select location" />
                         </SelectTrigger>
@@ -375,38 +381,38 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           </form>
         </Form>
 
-        {feedback ? (
-          <div
-            className={cn(
-              "rounded-md border p-2 text-sm",
-              feedback.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                : "border-destructive/40 bg-destructive/10 text-destructive"
-            )}
-          >
-            {feedback.message}
-          </div>
-        ) : null}
+        <DialogFooter className="sticky bottom-0 z-10 flex flex-col gap-3 border-t bg-card/95 px-6 py-4 backdrop-blur md:flex-row md:items-center md:justify-between">
+          {feedback ? (
+            <div
+              className={cn(
+                "w-full rounded-md border px-3 py-2 text-xs text-destructive md:w-auto md:text-sm",
+                "border-destructive/40 bg-destructive/10"
+              )}
+            >
+              {feedback.message}
+            </div>
+          ) : null}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={onSubmit}
-            disabled={updateTicket.isPending || locationsLoading}
-            className="gap-2"
-          >
-            {updateTicket.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              "Save changes"
-            )}
-          </Button>
+          <div className="flex w-full items-center justify-end gap-2 md:w-auto">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={onSubmit}
+              disabled={updateTicket.isPending || locationsLoading}
+              className="gap-2"
+            >
+              {updateTicket.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Saving…
+                </>
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

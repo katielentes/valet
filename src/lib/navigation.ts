@@ -32,7 +32,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Payments",
     href: "/payments",
     icon: CreditCard,
-    comingSoon: true,
   },
   {
     label: "Reports",

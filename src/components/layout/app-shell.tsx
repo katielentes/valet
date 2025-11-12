@@ -47,6 +47,8 @@ type AppShellContextValue = {
   setLocation: (value: string) => void;
   locations: LocationRecord[];
   locationsLoading: boolean;
+  role: string;
+  assignedLocationId: string | null;
 };
 
 const AppShellContext = createContext<AppShellContextValue | undefined>(undefined);
@@ -60,32 +62,75 @@ export function useAppShell() {
 }
 
 export function AppShell({ session, children }: AppShellProps) {
-  const [location, setLocation] = useState("all");
-  const { data: locationsData, isLoading: locationsLoading } = useLocations();
-  const locations = useMemo(
-    () => locationsData?.locations ?? [],
-    [locationsData]
+  const userRole = session.user.role;
+  const assignedLocationId = session.user.location?.id ?? null;
+
+  const [locationState, setLocationState] = useState(
+    userRole === "STAFF" ? assignedLocationId ?? "all" : "all"
   );
+
+  const { data: locationsData, isLoading: locationsLoading } = useLocations();
+  const rawLocations = useMemo(() => {
+    const apiLocations = locationsData?.locations ?? [];
+    if (apiLocations.length === 0 && session.user.location) {
+      return [
+        {
+          id: session.user.location.id,
+          name: session.user.location.name,
+          identifier: session.user.location.identifier,
+          taxRateBasisPoints: 0,
+          hotelSharePoints: 0,
+          hourlyRateCents: 0,
+          hourlyTierHours: null,
+          overnightRateCents: 0,
+        },
+      ];
+    }
+    return apiLocations;
+  }, [locationsData, session.user.location]);
+  const locations = useMemo(() => {
+    if (userRole === "STAFF" && assignedLocationId) {
+      return rawLocations.filter((loc) => loc.id === assignedLocationId);
+    }
+    return rawLocations;
+  }, [rawLocations, userRole, assignedLocationId]);
+
   const effectiveLocation = useMemo(() => {
-    if (location === "all") return "all";
-    return locations.some((loc) => loc.id === location) ? location : "all";
-  }, [location, locations]);
+    if (userRole === "STAFF") {
+      return assignedLocationId ?? "all";
+    }
+    if (locationState === "all") return "all";
+    return locations.some((loc) => loc.id === locationState) ? locationState : "all";
+  }, [userRole, assignedLocationId, locationState, locations]);
+
+  const handleLocationChange = (value: string) => {
+    if (userRole === "STAFF") return;
+    setLocationState(value);
+  };
 
   return (
     <AppShellContext.Provider
-      value={{ session, location: effectiveLocation, setLocation, locations, locationsLoading }}
+      value={{
+        session,
+        location: effectiveLocation,
+        setLocation: handleLocationChange,
+        locations,
+        locationsLoading,
+        role: userRole,
+        assignedLocationId,
+      }}
     >
       <div className="flex min-h-screen w-full bg-muted/40">
         <DesktopSidebar
           session={session}
           location={effectiveLocation}
-          onLocationChange={setLocation}
+          onLocationChange={handleLocationChange}
         />
         <div className="flex min-h-screen flex-1 flex-col">
           <Topbar
             session={session}
             location={effectiveLocation}
-            onLocationChange={setLocation}
+            onLocationChange={handleLocationChange}
           />
           <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
         </div>
@@ -127,14 +172,16 @@ type SidebarProps = {
 
 function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading } = useAppShell();
-  const locationOptions = useMemo(
-    () => [
-      { value: "all", label: "All Locations" },
-      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
-    ],
-    [locations]
-  );
+  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
+  const locationOptions = useMemo(() => {
+    const mapped = locations.map((loc) => ({ value: loc.id, label: loc.name }));
+    if (role === "STAFF") {
+      return mapped;
+    }
+    return [{ value: "all", label: "All Locations" }, ...mapped];
+  }, [locations, role]);
+  const assignedLocationName =
+    assignedLocationId && locations.find((loc) => loc.id === assignedLocationId)?.name;
 
   return (
     <aside className="hidden w-[260px] flex-col border-r bg-white/70 p-4 lg:flex lg:w-[280px]">
@@ -154,12 +201,20 @@ function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
           <CardDescription className="text-xs text-muted-foreground">
             Filter dashboards by valet location to focus your team.
           </CardDescription>
-          <LocationSelect
-            value={location}
-            onChange={onLocationChange}
-            options={locationOptions}
-            disabled={locationsLoading}
-          />
+          {role === "STAFF" ? (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {assignedLocationName ?? "Location not assigned"}
+              </span>
+            </div>
+          ) : (
+            <LocationSelect
+              value={location}
+              onChange={onLocationChange}
+              options={locationOptions}
+              disabled={locationsLoading || role === "STAFF"}
+            />
+          )}
         </CardHeader>
       </Card>
 
@@ -237,18 +292,23 @@ type TopbarProps = {
 
 function Topbar({ session, location, onLocationChange }: TopbarProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading } = useAppShell();
+  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
   const activeItem = useMemo(
     () => NAV_ITEMS.find((item) => pathname?.startsWith(item.href)) ?? NAV_ITEMS[0],
     [pathname]
   );
   const locationOptions = useMemo(
-    () => [
-      { value: "all", label: "All Locations" },
-      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
-    ],
-    [locations]
+    () => {
+      const mapped = locations.map((loc) => ({ value: loc.id, label: loc.name }));
+      if (role === "STAFF") {
+        return mapped;
+      }
+      return [{ value: "all", label: "All Locations" }, ...mapped];
+    },
+    [locations, role]
   );
+  const assignedLocationName =
+    assignedLocationId && locations.find((loc) => loc.id === assignedLocationId)?.name;
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white/70 px-4 backdrop-blur-md sm:px-6">
@@ -271,13 +331,19 @@ function Topbar({ session, location, onLocationChange }: TopbarProps) {
             className="w-64"
             aria-label="Search"
           />
-          <LocationSelect
-            value={location}
-            onChange={onLocationChange}
-            className="hidden lg:flex lg:w-48"
-            options={locationOptions}
-            disabled={locationsLoading}
-          />
+          {role === "STAFF" ? (
+            <Badge variant="outline" className="hidden lg:flex lg:w-auto bg-muted/50 text-muted-foreground">
+              {assignedLocationName ?? "Location not assigned"}
+            </Badge>
+          ) : (
+            <LocationSelect
+              value={location}
+              onChange={onLocationChange}
+              className="hidden lg:flex lg:w-48"
+              options={locationOptions}
+              disabled={locationsLoading || role === "STAFF"}
+            />
+          )}
         </div>
 
         <Button variant="ghost" size="icon" aria-label="Notifications">
@@ -300,14 +366,17 @@ function MobileSidebarTrigger({
   onLocationChange,
 }: MobileSidebarTriggerProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading } = useAppShell();
+  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
   const locationOptions = useMemo(
-    () => [
-      { value: "all", label: "All Locations" },
-      ...locations.map((loc) => ({ value: loc.id, label: loc.name })),
-    ],
-    [locations]
+    () => {
+      const mapped = locations.map((loc) => ({ value: loc.id, label: loc.name }));
+      if (role === "STAFF") return mapped;
+      return [{ value: "all", label: "All Locations" }, ...mapped];
+    },
+    [locations, role]
   );
+  const assignedLocationName =
+    assignedLocationId && locations.find((loc) => loc.id === assignedLocationId)?.name;
 
   return (
     <Sheet>
@@ -326,13 +395,21 @@ function MobileSidebarTrigger({
         <div className="mt-4 space-y-4">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Locations</p>
-            <LocationSelect
-              value={location}
-              onChange={onLocationChange}
-              className="mt-2"
-              options={locationOptions}
-              disabled={locationsLoading}
-            />
+            {role === "STAFF" ? (
+              <div className="mt-2 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {assignedLocationName ?? "Location not assigned"}
+                </span>
+              </div>
+            ) : (
+              <LocationSelect
+                value={location}
+                onChange={onLocationChange}
+                className="mt-2"
+                options={locationOptions}
+                disabled={locationsLoading || role === "STAFF"}
+              />
+            )}
           </div>
           <Separator />
           <div className="space-y-1">

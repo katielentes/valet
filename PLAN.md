@@ -54,7 +54,8 @@
 - [x] Implement Active Tickets dashboard with live data bindings.
 - [x] Deliver outbound messaging (Twilio send flow, templates, ticket logging).
 - [x] Implement ticket creation & editing (forms, API, audit logging).
-- [ ] Implement payment workflows in UI (Stripe link integration & projected billing).
+- [x] Implement payment workflows in UI (Stripe link integration & projected billing).
+- [x] Add payments index page with metrics table view.
 
 ## Progress Log
 - **2025-11-11** — Initialized shadcn (`components.json`, neutral palette) and added base UI components (`button`, `card`, `dialog`, `tabs`, `badge`, form inputs). Tailwind globals now expose CSS variables for future theming tweaks; utility helper `cn` added to `src/lib/utils.ts`.
@@ -69,14 +70,34 @@
 - **2025-11-11** — Added Twilio-backed messaging service with Express endpoints, template picker, ticket history, and “Notify Customer” workflow in Active Tickets.
 - **2025-11-11** — Enabled ticket editing with audit logging, dynamic location filters tied to tenant data, and Prisma-backed update APIs.
 - **2025-11-11** — Delivered ticket creation modal with live location defaults, Prisma create endpoint, and audit logging for new tickets.
+- **2025-11-11** — Added Stripe payment link workflow with Twilio SMS delivery, payment records, and UI to send links per ticket.
+- **2025-11-12** — Automated welcome SMS on ticket creation, enforced in/out payment requirements, and added Twilio inbound handler to trigger outstanding balance payment links and capture return intents.
+- **2025-11-12** — Updated ticket card visuals (vehicle border indicates WITH_US/AWAY, badges for in/out privileges), adjusted Hampton/Hyatt tiered pricing logic, seeded additional Hampton scenarios, added Sonner-based toast system, and modernized edit dialog layout (sticky header/footer, scrollable body). Payments page now renders a table layout on desktop with responsive cards on mobile.
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.
 - Reference key decisions, integration details, and testing notes here throughout development.
+- Before starting new development sessions, review this plan and related docs (`docs/business-payment-rules.md`, `docs/future-multi-tenant-state.md`, `context.md`) to ensure alignment on priorities and open items.
+
+## Next Steps
+1. **Stripe Multi-Tenant Support**
+   - Implement tenant-level Stripe credential storage (per `docs/future-multi-tenant-state.md`).
+   - Add Connect onboarding flow and update payment link creation to target tenant accounts.
+   - Build admin UI for verifying Stripe status, disconnecting/reconnecting tenants, and audit logging configuration changes.
+2. **Reporting Enhancements**
+   - Surface payment summaries by location (completed vs pending) with export options.
+   - Add weekly/monthly dashboards leveraging Prisma aggregates and TanStack Query caching strategies already in place.
+3. **Messaging & Notifications**
+   - Expand toast usage to other critical flows (new ticket, payment failure) and document UI feedback patterns.
+   - Introduce escalations for overdue payments (e.g., scheduled reminders, manager alerts).
+4. **Performance & Testing**
+   - Cover pricing tiers with unit tests to ensure Hampton/Hyatt scenarios remain accurate as new locations are added.
+   - Integrate end-to-end tests for edit dialog accessibility (keyboard navigation, scroll behaviour across breakpoints).
 
 ## Requirements Trace (from `context.md`)
 - Valet ticket lifecycle management with creation, editing, in/out privileges, vehicle status (with us/away), parking spot tracking.
-- Customer communications: inbound SMS to request vehicles, outbound SMS notifications and templates, clear location selection messaging.
+- Customer communications: inbound SMS to request vehicles, outbound SMS notifications and templates, clear location selection messaging, and automated welcome/inbound prompts for in/out privileges.
+- Payment safeguards: auto-detect overtime balances for prepaid hourly stays, auto-send Stripe link before pickup, and prevent in/out departures with outstanding balances.
 - Payment processing: Stripe payment link flows with Hampton/Hyatt pricing tiers, projected revenue for open tickets, live pricing previews.
 - Multi-location support: Hampton and Hyatt with configurable hourly/overnight rates, location filters, auto-select behavior when creating tickets.
 - Mobile-first UI: responsive ticket cards, stacked action buttons, accessible modals, consistent spacing on small screens.

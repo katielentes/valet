@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import prisma from "../lib/prisma";
 import { resolveSession } from "../lib/session";
+import { calculateProjectedAmountCents } from "../utils/pricing";
+import { hasTwilioConfig, sendSms } from "../lib/twilio";
 
 const querySchema = z.object({
   locationId: z.string().optional(),
@@ -44,34 +46,6 @@ const createSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
   checkInTime: z.string().optional(),
 });
-function calculateProjectedAmount(ticket: {
-  rateType: "HOURLY" | "OVERNIGHT";
-  checkInTime: Date;
-  checkOutTime: Date | null;
-  location: {
-    hourlyRateCents: number;
-    overnightRateCents: number;
-    hourlyTierHours: number | null;
-  };
-}) {
-  if (ticket.rateType === "OVERNIGHT") {
-    return ticket.location.overnightRateCents;
-  }
-
-  const endTime = ticket.checkOutTime ?? new Date();
-  const diffMs = Math.max(endTime.getTime() - ticket.checkInTime.getTime(), 0);
-  const diffHours = diffMs / (1000 * 60 * 60);
-
-  const billedHours = Math.max(1, Math.ceil(diffHours));
-  const tier = ticket.location.hourlyTierHours ?? 0;
-
-  if (tier && diffHours > tier) {
-    return ticket.location.overnightRateCents;
-  }
-
-  return ticket.location.hourlyRateCents * billedHours;
-}
-
 export function registerTicketRoutes(router: Router) {
   router.get("/api/tickets", async (req, res) => {
     const parsed = querySchema.safeParse(req.query);
@@ -89,6 +63,17 @@ export function registerTicketRoutes(router: Router) {
       return;
     }
 
+    const userRole = session.user.role;
+    const userLocationId = session.user.locationId ?? session.user.location?.id ?? null;
+    let effectiveLocationId = locationId;
+    if (userRole === "STAFF") {
+      if (!userLocationId) {
+        res.status(403).json({ error: "Location access not configured for this user." });
+        return;
+      }
+      effectiveLocationId = userLocationId;
+    }
+
     try {
       const statusFilter = status
         ? { status }
@@ -97,7 +82,9 @@ export function registerTicketRoutes(router: Router) {
       const tickets = await prisma.ticket.findMany({
         where: {
           tenantId: session.tenantId,
-          ...(locationId && locationId !== "all" ? { locationId } : {}),
+          ...(effectiveLocationId && effectiveLocationId !== "all"
+            ? { locationId: effectiveLocationId }
+            : {}),
           ...(vehicleStatus ? { vehicleStatus } : {}),
           ...statusFilter,
         },
@@ -107,6 +94,7 @@ export function registerTicketRoutes(router: Router) {
             orderBy: { sentAt: "desc" },
             take: 1,
           },
+          payments: true,
         },
         orderBy: {
           checkInTime: "asc",
@@ -114,7 +102,12 @@ export function registerTicketRoutes(router: Router) {
       });
 
       const formatted = tickets.map((ticket) => {
-        const projectedAmountCents = calculateProjectedAmount(ticket);
+        const projectedAmountCents = calculateProjectedAmountCents(ticket);
+        const completedPayments = ticket.payments.filter((payment) => payment.status === "COMPLETED");
+        const amountPaidCents = completedPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
+        const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
+        const hasCompletedPayment = completedPayments.length > 0;
+        const paymentComplete = outstandingAmountCents <= 0;
         const elapsedMs = Math.max(new Date().getTime() - ticket.checkInTime.getTime(), 0);
         const elapsedHours = Math.round((elapsedMs / (1000 * 60 * 60)) * 10) / 10;
 
@@ -136,6 +129,10 @@ export function registerTicketRoutes(router: Router) {
           notes: ticket.notes,
           projectedAmountCents,
           elapsedHours,
+          amountPaidCents,
+          outstandingAmountCents,
+          hasCompletedPayment,
+          paymentComplete,
           location: {
             id: ticket.location.id,
             name: ticket.location.name,
@@ -187,10 +184,18 @@ export function registerTicketRoutes(router: Router) {
     }
 
     const data = parsed.data;
+    const userRole = session.user.role;
+    const userLocationId = session.user.locationId ?? session.user.location?.id ?? null;
+    const locationIdToUse = userRole === "STAFF" ? userLocationId : data.locationId;
+
+    if (!locationIdToUse) {
+      res.status(400).json({ error: "Location is required" });
+      return;
+    }
 
     try {
       const location = await prisma.location.findFirst({
-        where: { id: data.locationId, tenantId: session.tenantId },
+        where: { id: locationIdToUse, tenantId: session.tenantId },
       });
 
       if (!location) {
@@ -213,7 +218,7 @@ export function registerTicketRoutes(router: Router) {
       const ticket = await prisma.ticket.create({
         data: {
           tenantId: session.tenantId,
-          locationId: data.locationId,
+          locationId: locationIdToUse,
           ticketNumber: data.ticketNumber,
           customerName: data.customerName,
           customerPhone: data.customerPhone,
@@ -247,6 +252,52 @@ export function registerTicketRoutes(router: Router) {
         },
       });
 
+      if (hasTwilioConfig && ticket.customerPhone) {
+        const valetNumber = process.env.TWILIO_FROM_NUMBER ?? "this number";
+        let welcomeMessage = `Hi ${ticket.customerName}, welcome to ValetPro at ${ticket.location.name}. Text ${valetNumber} with your ticket ${ticket.ticketNumber} when you're ready for your vehicle.`;
+        if (ticket.inOutPrivileges) {
+          welcomeMessage +=
+            " Since you have in/out privileges, please let us know if you'll be returning so we can keep your spot ready.";
+        }
+
+        try {
+          await sendSms({
+            to: ticket.customerPhone,
+            body: welcomeMessage,
+          });
+
+          await prisma.message.create({
+            data: {
+              tenantId: session.tenantId,
+              ticketId: ticket.id,
+              direction: "OUTBOUND",
+              body: welcomeMessage,
+              deliveryStatus: "SENT",
+              metadata: {
+                automated: true,
+                reason: "welcome",
+              },
+            },
+          });
+
+          await prisma.auditLog.create({
+            data: {
+              tenantId: session.tenantId,
+              ticketId: ticket.id,
+              userId: session.userId ?? null,
+              action: "MESSAGE_SENT",
+              details: {
+                ticketNumber: ticket.ticketNumber,
+                automated: true,
+                reason: "welcome",
+              },
+            },
+          });
+        } catch (error) {
+          console.error("Failed to send welcome message", error);
+        }
+      }
+
       res.status(201).json({ ticket });
     } catch (error) {
       console.error("Failed to create ticket", error);
@@ -270,6 +321,8 @@ export function registerTicketRoutes(router: Router) {
     }
 
     const updates = parsed.data;
+    const userRole = session.user.role;
+    const userLocationId = session.user.locationId ?? session.user.location?.id ?? null;
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: "No changes provided" });
@@ -279,11 +332,35 @@ export function registerTicketRoutes(router: Router) {
     try {
       const existingTicket = await prisma.ticket.findFirst({
         where: { id: ticketId, tenantId: session.tenantId },
+        include: {
+          payments: {
+            select: {
+              amountCents: true,
+              status: true,
+            },
+          },
+          location: true,
+        },
       });
 
       if (!existingTicket) {
         res.status(404).json({ error: "Ticket not found" });
         return;
+      }
+
+      if (userRole === "STAFF") {
+        if (!userLocationId) {
+          res.status(403).json({ error: "Location access not configured for this user." });
+          return;
+        }
+        if (existingTicket.locationId !== userLocationId) {
+          res.status(403).json({ error: "You do not have permission to modify this ticket." });
+          return;
+        }
+        if (updates.locationId && updates.locationId !== existingTicket.locationId) {
+          res.status(403).json({ error: "You are not allowed to change ticket locations." });
+          return;
+        }
       }
 
       if (updates.locationId && updates.locationId !== existingTicket.locationId) {
@@ -295,6 +372,49 @@ export function registerTicketRoutes(router: Router) {
           res.status(400).json({ error: "Invalid location selection" });
           return;
         }
+      }
+
+      const amountPaidCents = existingTicket.payments
+        .filter((payment) => payment.status === "COMPLETED")
+        .reduce((sum, payment) => sum + payment.amountCents, 0);
+
+      const projectedAmountCents = calculateProjectedAmountCents({
+        rateType: existingTicket.rateType,
+        checkInTime: existingTicket.checkInTime,
+        checkOutTime: existingTicket.checkOutTime ?? null,
+        inOutPrivileges: existingTicket.inOutPrivileges,
+        location: {
+          identifier: existingTicket.location.identifier,
+          hourlyRateCents: existingTicket.location.hourlyRateCents,
+          overnightRateCents: existingTicket.location.overnightRateCents,
+          hourlyTierHours: existingTicket.location.hourlyTierHours,
+        },
+      });
+
+      const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
+
+      const statusRequiresPayment =
+        updates.status && ["READY_FOR_PICKUP", "COMPLETED"].includes(updates.status);
+
+      if (statusRequiresPayment && outstandingAmountCents > 0) {
+        res.status(400).json({
+          error: "Payment required before changing status to Ready or Completed.",
+        });
+        return;
+      }
+
+      const vehicleStatusChangingToAway =
+        updates.vehicleStatus === "AWAY" && existingTicket.vehicleStatus !== "AWAY";
+
+      if (
+        vehicleStatusChangingToAway &&
+        existingTicket.inOutPrivileges &&
+        outstandingAmountCents > 0
+      ) {
+        res.status(400).json({
+          error: "Outstanding balances must be paid before the vehicle can leave.",
+        });
+        return;
       }
 
       const updatedTicket = await prisma.ticket.update({

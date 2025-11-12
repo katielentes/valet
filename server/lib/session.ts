@@ -74,7 +74,11 @@ export async function resolveSession(req: Request) {
   const session = await prisma.session.findUnique({
     where: { tokenHash },
     include: {
-      user: true,
+      user: {
+        include: {
+          location: true,
+        },
+      },
       tenant: true,
     },
   });

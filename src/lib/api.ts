@@ -1,9 +1,16 @@
+export type AuthLocation = {
+  id: string;
+  name: string;
+  identifier: string;
+};
+
 export type AuthUser = {
   id: string;
   name: string;
   email: string;
   role: string;
   tenantId: string;
+  location: AuthLocation | null;
 };
 
 export type AuthTenant = {

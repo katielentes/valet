@@ -1,19 +1,46 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Loader2, RefreshCcw, Filter } from "lucide-react";
+import {
+  Loader2,
+  RefreshCcw,
+  Filter,
+  CreditCard,
+  Send,
+  CarFront,
+  MoreHorizontal,
+} from "lucide-react";
 import { format } from "date-fns";
 
 import { useAppShell } from "@/components/layout/app-shell";
 import { EditTicketDialog } from "@/components/tickets/edit-ticket-dialog";
+import { SendPaymentLinkDialog } from "@/components/payments/send-payment-link-dialog";
 import { NewTicketDialog } from "@/components/tickets/new-ticket-dialog";
 import { SendMessageDialog } from "@/components/messages/send-message-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTicketsQuery, type Ticket, type TicketFilters } from "@/hooks/use-tickets";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  useTicketsQuery,
+  useUpdateTicketMutation,
+  type Ticket,
+  type TicketFilters,
+  type UpdateTicketData,
+} from "@/hooks/use-tickets";
 import { cn } from "@/lib/utils";
 
 const FILTERS = [
@@ -37,14 +64,33 @@ export default function TicketsPage() {
 
   const { data, isLoading, error, refetch, isFetching } = useTicketsQuery(filters);
   const [ticketForMessage, setTicketForMessage] = useState<Ticket | null>(null);
+  const [ticketForPayment, setTicketForPayment] = useState<Ticket | null>(null);
   const [ticketForEdit, setTicketForEdit] = useState<Ticket | null>(null);
   const [newTicketOpen, setNewTicketOpen] = useState(false);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const handleOpenSendDialog = (ticket: Ticket) => {
     setTicketForMessage(ticket);
     setMessageDialogOpen(true);
+  };
+
+  const handleOpenPaymentDialog = (ticket: Ticket) => {
+    setTicketForPayment(ticket);
+    setPaymentDialogOpen(true);
+  };
+
+  const updateTicket = useUpdateTicketMutation();
+  const [updatingTicketId, setUpdatingTicketId] = useState<string | null>(null);
+
+  const handleTicketUpdate = async (ticketId: string, data: UpdateTicketData) => {
+    setUpdatingTicketId(ticketId);
+    try {
+      await updateTicket.mutateAsync({ id: ticketId, data });
+    } finally {
+      setUpdatingTicketId((current) => (current === ticketId ? null : current));
+    }
   };
 
   const handleOpenEditDialog = (ticket: Ticket) => {
@@ -63,6 +109,17 @@ export default function TicketsPage() {
           setMessageDialogOpen(open);
           if (!open) {
             setTicketForMessage(null);
+          }
+        }}
+      />
+
+      <SendPaymentLinkDialog
+        ticket={ticketForPayment}
+        open={paymentDialogOpen}
+        onOpenChange={(open) => {
+          setPaymentDialogOpen(open);
+          if (!open) {
+            setTicketForPayment(null);
           }
         }}
       />
@@ -148,6 +205,9 @@ export default function TicketsPage() {
         tickets={data?.tickets ?? []}
         onNotify={handleOpenSendDialog}
         onEdit={handleOpenEditDialog}
+        onPayment={handleOpenPaymentDialog}
+        onUpdate={handleTicketUpdate}
+        updatingTicketId={updatingTicketId}
       />
     </div>
   );
@@ -214,9 +274,20 @@ type TicketResultsProps = {
   tickets: Ticket[];
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
+  onPayment: (ticket: Ticket) => void;
+  onUpdate: (ticketId: string, data: UpdateTicketData) => Promise<void>;
+  updatingTicketId: string | null;
 };
 
-function TicketResults({ loading, tickets, onNotify, onEdit }: TicketResultsProps) {
+function TicketResults({
+  loading,
+  tickets,
+  onNotify,
+  onEdit,
+  onPayment,
+  onUpdate,
+  updatingTicketId,
+}: TicketResultsProps) {
   if (loading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -249,7 +320,15 @@ function TicketResults({ loading, tickets, onNotify, onEdit }: TicketResultsProp
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {tickets.map((ticket) => (
-        <TicketCard key={ticket.id} ticket={ticket} onNotify={onNotify} onEdit={onEdit} />
+        <TicketCard
+          key={ticket.id}
+          ticket={ticket}
+          onNotify={onNotify}
+          onEdit={onEdit}
+          onPayment={onPayment}
+          onUpdate={onUpdate}
+          isUpdating={updatingTicketId === ticket.id}
+        />
       ))}
     </div>
   );
@@ -259,10 +338,24 @@ type TicketCardProps = {
   ticket: Ticket;
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
+  onPayment: (ticket: Ticket) => void;
+  onUpdate: TicketResultsProps["onUpdate"];
+  isUpdating: boolean;
 };
 
-function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
+function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating }: TicketCardProps) {
   const projectedAmount = `$${(ticket.projectedAmountCents / 100).toFixed(2)}`;
+  const outstandingAmount = ticket.outstandingAmountCents / 100;
+  const amountPaid = ticket.amountPaidCents / 100;
+  const paymentComplete = ticket.paymentComplete;
+  const requiresPaymentBeforeAway =
+    ticket.inOutPrivileges && ticket.vehicleStatus === "WITH_US" && ticket.outstandingAmountCents > 0;
+  const statusOptions: Array<{ label: string; value: typeof ticket.status }> = [
+    { label: "Checked In", value: "CHECKED_IN" },
+    { label: "Ready for Pickup", value: "READY_FOR_PICKUP" },
+    { label: "Completed", value: "COMPLETED" },
+    { label: "Cancelled", value: "CANCELLED" },
+  ];
   const rateBadge =
     ticket.rateType === "OVERNIGHT" ? (
       <Badge variant="secondary" className="gap-1">
@@ -273,13 +366,78 @@ function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
         ⏱️ Hourly
       </Badge>
     );
+  const vehicleBorderStyles: Record<Ticket["vehicleStatus"], string> = {
+    WITH_US: "border-l-4 border-l-emerald-500 shadow-sm shadow-emerald-100",
+    AWAY: "border-l-4 border-l-amber-400 shadow-sm shadow-amber-100",
+  };
+
+  const privilegesBadge = ticket.inOutPrivileges ? (
+    <Badge variant="secondary" className="gap-1 border-indigo-200 bg-indigo-50 text-indigo-700">
+      ↔ In/Out Privileges
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="gap-1 text-muted-foreground">
+      Single Entry
+    </Badge>
+  );
+
+  const vehicleChip =
+    ticket.vehicleStatus === "WITH_US" ? (
+      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+        With Us
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+        Away
+      </Badge>
+    );
+
+  const statusChipMap: Record<Ticket["status"], { label: string; classes: string }> = {
+    CHECKED_IN: { label: "Checked In", classes: "bg-blue-50 text-blue-700 border-blue-200" },
+    READY_FOR_PICKUP: { label: "Ready", classes: "bg-amber-50 text-amber-700 border-amber-200" },
+    COMPLETED: { label: "Completed", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    CANCELLED: { label: "Cancelled", classes: "bg-rose-50 text-rose-700 border-rose-200" },
+  };
+
+  const currentStatusChip = statusChipMap[ticket.status];
+  const paymentBadge = paymentComplete ? (
+    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+      Paid
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
+      Payment Needed
+    </Badge>
+  );
 
   return (
-    <Card className="flex h-full flex-col">
+    <Card
+      className={cn(
+        "flex h-full flex-col transition-shadow hover:shadow-lg",
+        vehicleBorderStyles[ticket.vehicleStatus]
+      )}
+    >
       <CardHeader className="space-y-1">
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-lg">{ticket.ticketNumber}</CardTitle>
-          {rateBadge}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-lg font-semibold">{ticket.ticketNumber}</CardTitle>
+            {rateBadge}
+            {privilegesBadge}
+            <Badge variant="outline" className={cn("capitalize", currentStatusChip.classes)}>
+              {currentStatusChip.label}
+            </Badge>
+            {vehicleChip}
+            {paymentBadge}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onEdit(ticket)}
+            aria-label="Edit ticket"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
         </div>
         <CardDescription className="flex items-center justify-between gap-2 text-sm">
           <span>{ticket.customerName}</span>
@@ -318,12 +476,28 @@ function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
             </Badge>
           </div>
           <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Privileges</span>
+            <span className="font-medium text-foreground">
+              {ticket.inOutPrivileges ? "In/Out access" : "Single entry"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Elapsed</span>
             <span>{ticket.elapsedHours} hrs</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Projected</span>
             <span className="font-semibold text-primary">{projectedAmount}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Paid</span>
+            <span className="font-medium text-emerald-700">${amountPaid.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Outstanding</span>
+            <span className={paymentComplete ? "text-emerald-600" : "text-rose-600"}>
+              ${outstandingAmount.toFixed(2)}
+            </span>
           </div>
         </div>
 
@@ -348,26 +522,101 @@ function TicketCard({ ticket, onNotify, onEdit }: TicketCardProps) {
         </div>
 
         {ticket.notes ? (
-          <div className="max-h-24 overflow-y-auto rounded-md border bg-card/60 p-3 text-xs text-muted-foreground">
+          <div className="max-h-24 overflow-y-auto rounded-md border bg-card/60 p-3 text-xs text-muted-foreground scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted">
             <p className="whitespace-pre-wrap text-foreground">{ticket.notes}</p>
           </div>
         ) : null}
 
-        <div className="mt-auto flex flex-wrap gap-2">
-          <Button variant="default" size="sm" className="flex-1" disabled>
-            Mark Ready
+        <div className="mt-auto flex flex-wrap gap-2 [&>button]:flex-1 [&>button]:text-sm">
+          <Button
+            variant={ticket.vehicleStatus === "WITH_US" ? "outline" : "secondary"}
+            size="sm"
+            disabled={isUpdating || requiresPaymentBeforeAway}
+            onClick={() =>
+              onUpdate(ticket.id, {
+                vehicleStatus: ticket.vehicleStatus === "WITH_US" ? "AWAY" : "WITH_US",
+              })
+            }
+          >
+            {isUpdating ? (
+              <span className="flex items-center gap-1 text-xs">
+                <Loader2 className="size-3 animate-spin" />
+                Updating…
+              </span>
+            ) : ticket.vehicleStatus === "WITH_US" ? (
+              <>
+                <CarFront className="size-4" />
+                Mark Away
+              </>
+            ) : (
+              <>
+                <CarFront className="size-4" />
+                Mark With Us
+              </>
+            )}
+          </Button>
+          {requiresPaymentBeforeAway ? (
+            <p className="w-full text-xs text-amber-600">
+              Balance must be paid before taking the vehicle off-site.
+            </p>
+          ) : null}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onPayment(ticket)}
+          >
+            <CreditCard className="size-4" />
+            Payment Link
           </Button>
           <Button
             variant="outline"
             size="sm"
-            className="flex-1"
             onClick={() => onNotify(ticket)}
+            disabled={isUpdating || !paymentComplete}
+            className={!paymentComplete ? "opacity-70" : undefined}
           >
-            Notify Customer
+            <Send className="size-4" />
+            Notify
           </Button>
-          <Button variant="ghost" size="sm" className="w-full" onClick={() => onEdit(ticket)}>
-            Edit Ticket
-          </Button>
+          {!paymentComplete ? (
+            <p className="w-full text-xs text-rose-500">
+              Payment required before notifying or setting Ready/Completed.
+            </p>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="default" size="sm" disabled={isUpdating}>
+                {isUpdating ? (
+                  <span className="flex items-center gap-1 text-xs">
+                    <Loader2 className="size-3 animate-spin" />
+                    Updating…
+                  </span>
+                ) : (
+                  "Change Status"
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="text-sm">
+              {statusOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  disabled={
+                    option.value === ticket.status ||
+                    isUpdating ||
+                    (!paymentComplete &&
+                      (option.value === "READY_FOR_PICKUP" || option.value === "COMPLETED"))
+                  }
+                  onClick={() =>
+                    onUpdate(ticket.id, {
+                      status: option.value,
+                    })
+                  }
+                >
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardContent>
     </Card>

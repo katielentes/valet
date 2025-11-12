@@ -20,6 +20,10 @@ export type Ticket = {
   checkInTime: string;
   projectedAmountCents: number;
   elapsedHours: number;
+  amountPaidCents: number;
+  outstandingAmountCents: number;
+  hasCompletedPayment: boolean;
+  paymentComplete: boolean;
   notes?: string | null;
   location: {
     id: string;
@@ -168,4 +172,6 @@ export function useCreateTicketMutation() {
     },
   });
 }
+
+export type UpdateTicketData = UpdateTicketVariables["data"];
 

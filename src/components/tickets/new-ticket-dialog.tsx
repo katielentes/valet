@@ -60,7 +60,13 @@ type NewTicketDialogProps = {
 };
 
 export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
-  const { locations, locationsLoading, location: currentLocation } = useAppShell();
+  const {
+    locations,
+    locationsLoading,
+    location: currentLocation,
+    role,
+    assignedLocationId,
+  } = useAppShell();
   const createTicket = useCreateTicketMutation();
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(
     null
@@ -93,6 +99,13 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
 
   useEffect(() => {
     if (!open) return;
+    const resolvedLocationId =
+      role === "STAFF"
+        ? assignedLocationId ?? ""
+        : currentLocation !== "all" && locations.some((loc) => loc.id === currentLocation)
+          ? currentLocation
+          : "";
+
     form.reset({
       ticketNumber: "",
       customerName: "",
@@ -102,21 +115,32 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       vehicleColor: "",
       licensePlate: "",
       parkingLocation: "",
-      locationId:
-        currentLocation !== "all" && locations.some((loc) => loc.id === currentLocation)
-          ? currentLocation
-          : "",
+      locationId: resolvedLocationId,
       rateType: "HOURLY",
       inOutPrivileges: "no",
       status: "CHECKED_IN",
       notes: "",
       checkInTime: toDateTimeInputValue(new Date()),
     });
-  }, [open, currentLocation, locations, form]);
+  }, [open, currentLocation, locations, role, assignedLocationId, form]);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setFeedback(null);
+    }
+    onOpenChange(nextOpen);
+  };
 
   const onSubmit = form.handleSubmit(async (values) => {
     setFeedback(null);
     try {
+      if (!values.locationId) {
+        setFeedback({
+          type: "error",
+          message: "A location is required to create a ticket. Please contact a manager.",
+        });
+        return;
+      }
       await createTicket.mutateAsync({
         ticketNumber: values.ticketNumber,
         customerName: values.customerName,
@@ -145,7 +169,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
   });
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>New ticket</DialogTitle>
@@ -175,7 +199,11 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                   <FormItem>
                     <FormLabel>Location</FormLabel>
                     <FormControl>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={locationsLoading}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled={locationsLoading || role === "STAFF"}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select location" />
                         </SelectTrigger>
