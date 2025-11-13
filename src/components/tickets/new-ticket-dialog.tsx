@@ -48,7 +48,6 @@ const formSchema = z.object({
   parkingLocation: z.string().optional(),
   locationId: z.string().min(1, "Select a location"),
   rateType: z.enum(["HOURLY", "OVERNIGHT"]),
-  inOutPrivileges: z.enum(["yes", "no"]),
   status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP"]),
   notes: z.string().optional(),
   checkInTime: z.string(),
@@ -152,7 +151,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         parkingLocation: values.parkingLocation || null,
         locationId: values.locationId,
         rateType: values.rateType,
-        inOutPrivileges: values.inOutPrivileges === "yes",
+        inOutPrivileges: false, // In/out privileges are now determined by location rate configuration
         status: values.status,
         vehicleStatus: "WITH_US",
       notes: values.notes || null,
@@ -352,25 +351,6 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                       <SelectContent>
                         <SelectItem value="HOURLY">Hourly</SelectItem>
                         <SelectItem value="OVERNIGHT">Overnight</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="inOutPrivileges"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>In/out privileges</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="yes">Yes</SelectItem>
-                        <SelectItem value="no">No</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

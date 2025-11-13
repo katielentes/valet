@@ -29,6 +29,8 @@ export type Ticket = {
     id: string;
     name: string;
     identifier: string;
+    overnightInOutPrivileges: boolean;
+    pricingTiers: Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null;
   };
   lastMessageAt: string | null;
 };

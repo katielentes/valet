@@ -141,6 +141,8 @@ export function registerTicketRoutes(router: Router) {
             id: ticket.location.id,
             name: ticket.location.name,
             identifier: ticket.location.identifier,
+            overnightInOutPrivileges: ticket.location.overnightInOutPrivileges,
+            pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
           },
           lastMessageAt: ticket.messages[0]?.sentAt ?? null,
         };

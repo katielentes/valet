@@ -348,8 +348,34 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
   const outstandingAmount = ticket.outstandingAmountCents / 100;
   const amountPaid = ticket.amountPaidCents / 100;
   const paymentComplete = ticket.paymentComplete;
+  
+  // Determine if this ticket's rate type has in/out privileges enabled at the location
+  const hasInOutPrivileges = useMemo(() => {
+    if (ticket.rateType === "OVERNIGHT") {
+      // For overnight, check the location's overnightInOutPrivileges setting
+      // Also check if there's a final tier (maxHours: null) with inOutPrivileges enabled
+      if (ticket.location.overnightInOutPrivileges) {
+        return true;
+      }
+      // Fallback to checking final tier if overnightInOutPrivileges is not set
+      if (ticket.location.pricingTiers && ticket.location.pricingTiers.length > 0) {
+        const finalTier = ticket.location.pricingTiers.find((tier) => tier.maxHours === null);
+        return finalTier?.inOutPrivileges === true;
+      }
+      return false;
+    } else {
+      // For hourly, check if any hourly tier (maxHours !== null) has inOutPrivileges
+      if (!ticket.location.pricingTiers || ticket.location.pricingTiers.length === 0) {
+        return false; // No tiers configured, no in/out privileges
+      }
+      return ticket.location.pricingTiers.some(
+        (tier) => tier.maxHours !== null && tier.inOutPrivileges === true
+      );
+    }
+  }, [ticket.location.pricingTiers, ticket.location.overnightInOutPrivileges, ticket.rateType]);
+  
   const requiresPaymentBeforeAway =
-    ticket.inOutPrivileges && ticket.vehicleStatus === "WITH_US" && ticket.outstandingAmountCents > 0;
+    hasInOutPrivileges && ticket.vehicleStatus === "WITH_US" && ticket.outstandingAmountCents > 0;
   const statusOptions: Array<{ label: string; value: typeof ticket.status }> = [
     { label: "Checked In", value: "CHECKED_IN" },
     { label: "Ready for Pickup", value: "READY_FOR_PICKUP" },
@@ -371,7 +397,7 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
     AWAY: "border-l-4 border-l-amber-400 shadow-sm shadow-amber-100",
   };
 
-  const privilegesBadge = ticket.inOutPrivileges ? (
+  const privilegesBadge = hasInOutPrivileges ? (
     <Badge variant="secondary" className="gap-1 border-indigo-200 bg-indigo-50 text-indigo-700">
       ↔ In/Out Privileges
     </Badge>
@@ -478,7 +504,7 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Privileges</span>
             <span className="font-medium text-foreground">
-              {ticket.inOutPrivileges ? "In/Out access" : "Single entry"}
+              {hasInOutPrivileges ? "In/Out access" : "Single entry"}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">

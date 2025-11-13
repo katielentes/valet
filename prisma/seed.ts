@@ -87,21 +87,27 @@ async function main() {
     },
     update: {
       name: "Hampton Inn",
-      hourlyRateCents: 2000,
-      hourlyTierHours: 3,
       overnightRateCents: 4600,
+      overnightInOutPrivileges: true,
       taxRateBasisPoints: 2325,
       hotelSharePoints: 500,
+      pricingTiers: [
+        { maxHours: 3, rateCents: 2000, inOutPrivileges: false },
+        { maxHours: null, rateCents: 4600, inOutPrivileges: true },
+      ],
     },
     create: {
       tenantId: tenant.id,
       name: "Hampton Inn",
       identifier: "hampton",
-      hourlyRateCents: 2000,
-      hourlyTierHours: 3,
       overnightRateCents: 4600,
+      overnightInOutPrivileges: true,
       taxRateBasisPoints: 2325,
       hotelSharePoints: 500,
+      pricingTiers: [
+        { maxHours: 3, rateCents: 2000, inOutPrivileges: false },
+        { maxHours: null, rateCents: 4600, inOutPrivileges: true },
+      ],
     },
   });
 
@@ -119,21 +125,29 @@ async function main() {
     },
     update: {
       name: "Hyatt Regency",
-      hourlyRateCents: 2200,
-      hourlyTierHours: 5,
       overnightRateCents: 5500,
+      overnightInOutPrivileges: true,
       taxRateBasisPoints: 2325,
       hotelSharePoints: 600,
+      pricingTiers: [
+        { maxHours: 2, rateCents: 2200, inOutPrivileges: false },
+        { maxHours: 5, rateCents: 3300, inOutPrivileges: false },
+        { maxHours: null, rateCents: 5500, inOutPrivileges: true },
+      ],
     },
     create: {
       tenantId: tenant.id,
       name: "Hyatt Regency",
       identifier: "hyatt",
-      hourlyRateCents: 2200,
-      hourlyTierHours: 5,
       overnightRateCents: 5500,
+      overnightInOutPrivileges: true,
       taxRateBasisPoints: 2325,
       hotelSharePoints: 600,
+      pricingTiers: [
+        { maxHours: 2, rateCents: 2200, inOutPrivileges: false },
+        { maxHours: 5, rateCents: 3300, inOutPrivileges: false },
+        { maxHours: null, rateCents: 5500, inOutPrivileges: true },
+      ],
     },
   });
 
@@ -330,8 +344,15 @@ async function main() {
   });
 
   // Additional Hampton tickets for scenario coverage
-  await prisma.ticket.create({
-    data: {
+  await prisma.ticket.upsert({
+    where: {
+      tenantId_ticketNumber: {
+        tenantId: tenant.id,
+        ticketNumber: "HAMP-1002",
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1002",
@@ -351,8 +372,15 @@ async function main() {
     },
   });
 
-  await prisma.ticket.create({
-    data: {
+  await prisma.ticket.upsert({
+    where: {
+      tenantId_ticketNumber: {
+        tenantId: tenant.id,
+        ticketNumber: "HAMP-1003",
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1003",
@@ -372,8 +400,15 @@ async function main() {
     },
   });
 
-  const hamptonTicket4 = await prisma.ticket.create({
-    data: {
+  const hamptonTicket4 = await prisma.ticket.upsert({
+    where: {
+      tenantId_ticketNumber: {
+        tenantId: tenant.id,
+        ticketNumber: "HAMP-1004",
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1004",
@@ -393,8 +428,15 @@ async function main() {
     },
   });
 
-  const hamptonTicket5 = await prisma.ticket.create({
-    data: {
+  const hamptonTicket5 = await prisma.ticket.upsert({
+    where: {
+      tenantId_ticketNumber: {
+        tenantId: tenant.id,
+        ticketNumber: "HAMP-1005",
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1005",
@@ -414,8 +456,15 @@ async function main() {
     },
   });
 
-  const hamptonTicket6 = await prisma.ticket.create({
-    data: {
+  const hamptonTicket6 = await prisma.ticket.upsert({
+    where: {
+      tenantId_ticketNumber: {
+        tenantId: tenant.id,
+        ticketNumber: "HAMP-1006",
+      },
+    },
+    update: {},
+    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1006",

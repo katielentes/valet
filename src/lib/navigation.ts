@@ -48,7 +48,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Locations",
     href: "/locations",
     icon: Waypoints,
-    comingSoon: true,
   },
 ];
 

@@ -1,3 +1,9 @@
+type PricingTier = {
+  maxHours: number | null;
+  rateCents: number;
+  inOutPrivileges?: boolean;
+};
+
 type TicketForPricing = {
   rateType: "HOURLY" | "OVERNIGHT";
   inOutPrivileges: boolean;
@@ -5,9 +11,8 @@ type TicketForPricing = {
   checkOutTime: Date | null;
   location: {
     identifier: string;
-    hourlyRateCents: number;
     overnightRateCents: number;
-    hourlyTierHours: number | null;
+    pricingTiers?: PricingTier[] | null;
   };
 };
 
@@ -26,17 +31,42 @@ export function calculateProjectedAmountCents(
     return ticket.location.overnightRateCents * fullDays;
   };
 
-  // In/out privileges: charge overnight rate per day
-  if (ticket.inOutPrivileges) {
-    return calculateOvernightRate(diffDays);
-  }
-
   // Overnight tickets: charge overnight rate per day
   if (ticket.rateType === "OVERNIGHT") {
     return calculateOvernightRate(diffDays);
   }
 
-  // Hourly tickets: check location-specific tiers first
+  // Note: In/out privileges are now a property of the rate/tier, not the ticket
+  // Staff should manually set tickets to "OVERNIGHT" rate type if they want in/out privileges
+
+  // Hourly tickets: check for pricing tiers first
+  if (ticket.location.pricingTiers && ticket.location.pricingTiers.length > 0) {
+    // Use configured pricing tiers
+    // Sort tiers by maxHours (null goes last)
+    const sortedTiers = [...ticket.location.pricingTiers].sort((a, b) => {
+      if (a.maxHours === null) return 1;
+      if (b.maxHours === null) return -1;
+      return a.maxHours - b.maxHours;
+    });
+    
+    // Find the appropriate tier based on hours
+    for (const tier of sortedTiers) {
+      if (tier.maxHours === null) {
+        // This is the final tier (unlimited hours) - use its rate
+        // But if it's been more than 24 hours, use overnight rate per day
+        return diffDays >= 1 ? calculateOvernightRate(diffDays) : tier.rateCents;
+      }
+      if (diffHours <= tier.maxHours) {
+        // If we've exceeded 24 hours, use overnight rate per day instead of tier rate
+        return diffDays >= 1 ? calculateOvernightRate(diffDays) : tier.rateCents;
+      }
+    }
+    
+    // If we've exceeded all tiers, use overnight rate per day
+    return calculateOvernightRate(diffDays);
+  }
+
+  // Fallback to hardcoded location-specific logic for backward compatibility
   const locationId = ticket.location.identifier.toLowerCase();
 
   if (locationId === "hampton") {
@@ -62,16 +92,7 @@ export function calculateProjectedAmountCents(
     return calculateOvernightRate(diffDays);
   }
 
-  // Default fallback for any future locations: hourly rate with optional tier-to-overnight escalation
-  const tier = ticket.location.hourlyTierHours ?? 0;
-
-  if (tier && diffHours > tier) {
-    // Exceeded tier: charge overnight rate per day
-    return calculateOvernightRate(diffDays);
-  }
-
-  // Within tier: charge hourly rate
-  const billedHours = Math.max(1, Math.ceil(diffHours));
-  return ticket.location.hourlyRateCents * billedHours;
+  // Default fallback: if no tiers configured and no hardcoded logic matches, use overnight rate
+  return calculateOvernightRate(diffDays);
 }
 

@@ -53,11 +53,11 @@ model Location {
   tenantId           String
   name               String
   identifier         String
-  hourlyRateCents    Int
-  hourlyTierHours    Int?
   overnightRateCents Int
-  taxRateBasisPoints Int     @default(2325) // example: 23.25% => 2325
-  hotelSharePoints   Int     @default(500)  // example: 5% => 500
+  overnightInOutPrivileges Boolean @default(true) // Whether overnight rate allows in/out privileges
+  taxRateBasisPoints Int      @default(2325) // example: 23.25% => 2325
+  hotelSharePoints   Int      @default(500)  // example: 5% => 500
+  pricingTiers       Json?   // Array of { maxHours: number | null, rateCents: number, inOutPrivileges?: boolean }
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -170,15 +170,15 @@ model Report {
 model AuditLog {
   id        String      @id @default(cuid())
   tenantId  String
-  ticketId  String
+  ticketId  String?
   userId    String?
   action    AuditAction
   details   Json?
   createdAt DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id])
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id])
 }
 
 model TicketComment {
@@ -258,6 +258,7 @@ enum AuditAction {
   PAYMENT_LINK_SENT
   PAYMENT_COMPLETED
   PAYMENT_REFUNDED
+  LOCATION_UPDATED
   REPORT_GENERATED
   COMMENT_ADDED
 }

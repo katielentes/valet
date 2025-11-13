@@ -40,7 +40,6 @@ const formSchema = z.object({
   licensePlate: z.string().optional(),
   parkingLocation: z.string().optional(),
   rateType: z.enum(["HOURLY", "OVERNIGHT"]),
-  inOutPrivileges: z.enum(["yes", "no"]),
   status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP", "COMPLETED", "CANCELLED"]),
   vehicleStatus: z.enum(["WITH_US", "AWAY"]),
   locationId: z.string(),
@@ -77,7 +76,6 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           licensePlate: "",
           parkingLocation: "",
           rateType: "HOURLY",
-          inOutPrivileges: "no",
           status: "CHECKED_IN",
           vehicleStatus: "WITH_US",
           locationId: "",
@@ -107,7 +105,6 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           licensePlate: values.licensePlate || null,
           parkingLocation: values.parkingLocation || null,
           rateType: values.rateType,
-          inOutPrivileges: values.inOutPrivileges === "yes",
           status: values.status,
           vehicleStatus: values.vehicleStatus,
           locationId: values.locationId,
@@ -292,25 +289,6 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
               />
               <FormField
                 control={form.control}
-                name="inOutPrivileges"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>In/out privileges</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="yes">Yes</SelectItem>
-                        <SelectItem value="no">No</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
                 name="status"
                 render={({ field }) => (
                   <FormItem>
@@ -429,7 +407,6 @@ function mapTicketToForm(ticket: Ticket): z.infer<typeof formSchema> {
     licensePlate: ticket.licensePlate ?? "",
     parkingLocation: ticket.parkingLocation ?? "",
     rateType: ticket.rateType,
-    inOutPrivileges: ticket.inOutPrivileges ? "yes" : "no",
     status: ticket.status,
     vehicleStatus: ticket.vehicleStatus,
     locationId: ticket.location.id,
