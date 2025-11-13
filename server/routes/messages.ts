@@ -70,6 +70,11 @@ async function recordOutboundMessage({
   });
 }
 
+const templateSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name must be 100 characters or less"),
+  body: z.string().min(1, "Body is required").max(500, "Body must be 500 characters or less"),
+});
+
 export function registerMessageRoutes(router: Router) {
   router.get("/api/messages/templates", async (req, res) => {
     try {
@@ -98,13 +103,152 @@ export function registerMessageRoutes(router: Router) {
     }
   });
 
+  router.post("/api/messages/templates", async (req, res) => {
+    try {
+      const session = await resolveSession(req);
+
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (session.user.role === "STAFF") {
+        res.status(403).json({ error: "Staff users cannot create templates" });
+        return;
+      }
+
+      const tenantId = session.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "Missing tenant context" });
+        return;
+      }
+
+      const parsed = templateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid template data", details: parsed.error.errors });
+        return;
+      }
+
+      const { name, body } = parsed.data;
+
+      const template = await prisma.messageTemplate.create({
+        data: {
+          tenantId,
+          name,
+          body,
+        },
+      });
+
+      res.status(201).json({ template });
+    } catch (error) {
+      console.error("Failed to create template", error);
+      if (error instanceof Error && error.message.includes("Unique constraint")) {
+        res.status(409).json({ error: "A template with this name already exists" });
+        return;
+      }
+      res.status(500).json({ error: "Unable to create template" });
+    }
+  });
+
+  router.patch("/api/messages/templates/:id", async (req, res) => {
+    try {
+      const session = await resolveSession(req);
+
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (session.user.role === "STAFF") {
+        res.status(403).json({ error: "Staff users cannot edit templates" });
+        return;
+      }
+
+      const tenantId = session.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "Missing tenant context" });
+        return;
+      }
+
+      const templateId = req.params.id;
+      const parsed = templateSchema.partial().safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: "Invalid template data", details: parsed.error.errors });
+        return;
+      }
+
+      const existing = await prisma.messageTemplate.findFirst({
+        where: { id: templateId, tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ error: "Template not found" });
+        return;
+      }
+
+      const template = await prisma.messageTemplate.update({
+        where: { id: templateId },
+        data: parsed.data,
+      });
+
+      res.json({ template });
+    } catch (error) {
+      console.error("Failed to update template", error);
+      if (error instanceof Error && error.message.includes("Unique constraint")) {
+        res.status(409).json({ error: "A template with this name already exists" });
+        return;
+      }
+      res.status(500).json({ error: "Unable to update template" });
+    }
+  });
+
+  router.delete("/api/messages/templates/:id", async (req, res) => {
+    try {
+      const session = await resolveSession(req);
+
+      if (!session) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+
+      if (session.user.role === "STAFF") {
+        res.status(403).json({ error: "Staff users cannot delete templates" });
+        return;
+      }
+
+      const tenantId = session.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "Missing tenant context" });
+        return;
+      }
+
+      const templateId = req.params.id;
+
+      const existing = await prisma.messageTemplate.findFirst({
+        where: { id: templateId, tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ error: "Template not found" });
+        return;
+      }
+
+      await prisma.messageTemplate.delete({
+        where: { id: templateId },
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete template", error);
+      res.status(500).json({ error: "Unable to delete template" });
+    }
+  });
+
   router.get("/api/messages", async (req, res) => {
     const ticketId = req.query.ticketId?.toString();
-
-    if (!ticketId) {
-      res.status(400).json({ error: "ticketId query parameter is required" });
-      return;
-    }
+    const locationId = req.query.locationId?.toString();
+    const direction = req.query.direction?.toString() as "INBOUND" | "OUTBOUND" | undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit.toString()) : undefined;
 
     try {
       const session = await resolveSession(req);
@@ -113,28 +257,81 @@ export function registerMessageRoutes(router: Router) {
         return;
       }
 
-      const ticket = await prisma.ticket.findFirst({
-        where: { id: ticketId, tenantId: session.tenantId },
-        select: { locationId: true },
-      });
+      const tenantId = session.tenantId;
 
-      if (!ticket) {
-        res.status(404).json({ error: "Ticket not found" });
+      // If ticketId is provided, use the existing ticket-scoped logic
+      if (ticketId) {
+        const ticket = await prisma.ticket.findFirst({
+          where: { id: ticketId, tenantId },
+          select: { locationId: true },
+        });
+
+        if (!ticket) {
+          res.status(404).json({ error: "Ticket not found" });
+          return;
+        }
+
+        if (
+          session.user.role === "STAFF" &&
+          (session.user.locationId == null || ticket.locationId !== session.user.locationId)
+        ) {
+          res.status(403).json({ error: "You do not have permission to view this ticket's messages." });
+          return;
+        }
+
+        const messages = await prisma.message.findMany({
+          where: { ticketId, tenantId },
+          orderBy: { sentAt: "desc" },
+          take: limit ?? 25,
+        });
+
+        res.json({ messages });
         return;
       }
 
-      if (
-        session.user.role === "STAFF" &&
-        (session.user.locationId == null || ticket.locationId !== session.user.locationId)
-      ) {
-        res.status(403).json({ error: "You do not have permission to view this ticket's messages." });
-        return;
+      // Otherwise, return all messages with optional filters
+      const where: {
+        tenantId: string;
+        ticketId?: string;
+        direction?: "INBOUND" | "OUTBOUND";
+        ticket?: { locationId?: string };
+      } = {
+        tenantId,
+      };
+
+      if (direction) {
+        where.direction = direction;
+      }
+
+      if (locationId) {
+        where.ticket = { locationId };
+      }
+
+      // For staff users, restrict to their location
+      if (session.user.role === "STAFF" && session.user.locationId) {
+        where.ticket = { locationId: session.user.locationId };
       }
 
       const messages = await prisma.message.findMany({
-        where: { ticketId, tenantId: session.tenantId },
+        where,
+        include: {
+          ticket: {
+            select: {
+              id: true,
+              ticketNumber: true,
+              customerName: true,
+              customerPhone: true,
+              location: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
         orderBy: { sentAt: "desc" },
-        take: 25,
+        take: limit ?? 50,
       });
 
       res.json({ messages });

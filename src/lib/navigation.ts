@@ -42,7 +42,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Messaging",
     href: "/messages",
     icon: MessageSquare,
-    comingSoon: true,
   },
   {
     label: "Locations",
@@ -56,7 +55,6 @@ export const SECONDARY_ITEMS: NavItem[] = [
     label: "Templates",
     href: "/templates",
     icon: BadgeCheck,
-    comingSoon: true,
   },
 ];
 
