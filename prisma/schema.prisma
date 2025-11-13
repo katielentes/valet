@@ -135,16 +135,19 @@ model MessageTemplate {
 }
 
 model Payment {
-  id            String        @id @default(cuid())
-  ticketId      String
-  tenantId      String
-  stripeLinkId  String
-  stripeProduct String
-  amountCents   Int
-  status        PaymentStatus @default(PENDING)
-  createdAt     DateTime      @default(now())
-  completedAt   DateTime?
-  metadata      Json?
+  id              String        @id @default(cuid())
+  ticketId        String
+  tenantId        String
+  stripeLinkId    String
+  stripeProduct   String
+  amountCents     Int
+  status          PaymentStatus @default(PENDING)
+  createdAt       DateTime      @default(now())
+  completedAt     DateTime?
+  refundAmountCents Int?        @default(0)
+  refundedAt      DateTime?
+  stripeRefundId  String?
+  metadata        Json?
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -234,6 +237,7 @@ enum MessageStatus {
 
 enum PaymentStatus {
   PENDING
+  PAYMENT_LINK_SENT
   COMPLETED
   FAILED
   REFUNDED
@@ -253,6 +257,7 @@ enum AuditAction {
   MESSAGE_SENT
   PAYMENT_LINK_SENT
   PAYMENT_COMPLETED
+  PAYMENT_REFUNDED
   REPORT_GENERATED
   COMMENT_ADDED
 }

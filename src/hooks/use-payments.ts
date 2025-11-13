@@ -7,6 +7,9 @@ export type PaymentRecord = {
   id: string;
   status: "PENDING" | "PAYMENT_LINK_SENT" | "COMPLETED" | "FAILED" | "REFUNDED";
   amountCents: number;
+  refundAmountCents: number;
+  refundedAt: string | null;
+  stripeRefundId: string | null;
   stripeLinkId: string | null;
   stripeProduct: string | null;
   metadata: Record<string, unknown> | null;
@@ -29,8 +32,11 @@ export type PaymentsMetrics = {
   totalCount: number;
   completedCount: number;
   pendingCount: number;
+  refundedCount: number;
   completedAmountCents: number;
   pendingAmountCents: number;
+  refundedAmountCents: number;
+  totalRefundedAmountCents: number;
 };
 
 export type PaymentsResponse = {
@@ -118,6 +124,42 @@ export function useCreatePaymentLinkMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tickets"] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+    },
+  });
+}
+
+type RefundPaymentVariables = {
+  paymentId: string;
+  amountCents?: number;
+  reason?: string;
+};
+
+type RefundPaymentResponse = {
+  payment: PaymentRecord;
+  refundAmountCents: number;
+  isFullRefund: boolean;
+};
+
+export function useRefundPaymentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<RefundPaymentResponse, Error, RefundPaymentVariables>({
+    mutationFn: async (variables) => {
+      const response = await fetch("/api/payments/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(variables),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to process refund");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
     },
   });
 }

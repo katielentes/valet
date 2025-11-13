@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
-import { DollarSign, Filter, Loader2, RefreshCcw, Wallet2, Clock3 } from "lucide-react";
+import { DollarSign, Filter, Loader2, RefreshCcw, Wallet2, Clock3, RotateCcw } from "lucide-react";
 
 import { useAppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RefundPaymentDialog } from "@/components/payments/refund-payment-dialog";
 import {
   Card,
   CardContent,
@@ -51,9 +52,19 @@ export default function PaymentsPage() {
   );
 
   const { data, isLoading, error, refetch, isFetching } = usePaymentsQuery(filters);
+  const { session } = useAppShell();
 
   const payments = data?.payments ?? [];
   const metrics = data?.metrics;
+  const [paymentForRefund, setPaymentForRefund] = useState<PaymentRecord | null>(null);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+
+  const canRefund = session.user.role === "ADMIN" || session.user.role === "MANAGER";
+
+  const handleOpenRefundDialog = (payment: PaymentRecord) => {
+    setPaymentForRefund(payment);
+    setRefundDialogOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -119,7 +130,22 @@ export default function PaymentsPage() {
         </div>
       ) : null}
 
-      <PaymentList loading={isLoading} payments={payments} />
+      <RefundPaymentDialog
+        payment={paymentForRefund}
+        open={refundDialogOpen}
+        onOpenChange={(open) => {
+          setRefundDialogOpen(open);
+          if (!open) {
+            setPaymentForRefund(null);
+          }
+        }}
+      />
+
+      <PaymentList
+        loading={isLoading}
+        payments={payments}
+        onRefund={canRefund ? handleOpenRefundDialog : undefined}
+      />
 
       <div className="rounded-lg border bg-muted/50 p-4 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">Need to mark a payment as collected?</p>
@@ -134,6 +160,8 @@ export default function PaymentsPage() {
   function PaymentsMetrics({ loading }: { loading: boolean }) {
     const totalCollected = metrics ? metrics.completedAmountCents / 100 : 0;
     const pendingAmount = metrics ? metrics.pendingAmountCents / 100 : 0;
+    const totalRefunded = metrics ? metrics.totalRefundedAmountCents / 100 : 0;
+    const netCollected = totalCollected - totalRefunded;
 
     const items = [
       {
@@ -143,6 +171,22 @@ export default function PaymentsPage() {
           (metrics?.completedCount ?? 0) === 1 ? "" : "s"
         } settled`,
         icon: DollarSign,
+      },
+      {
+        label: "Total Refunded",
+        value: currencyFormatter.format(totalRefunded),
+        sublabel: `${metrics?.refundedCount ?? 0} payment${
+          (metrics?.refundedCount ?? 0) === 1 ? "" : "s"
+        } refunded`,
+        icon: DollarSign,
+        color: "text-rose-600",
+      },
+      {
+        label: "Net Collected",
+        value: currencyFormatter.format(netCollected),
+        sublabel: "After refunds",
+        icon: DollarSign,
+        color: "text-emerald-600",
       },
       {
         label: "Pending Collections",
@@ -161,20 +205,22 @@ export default function PaymentsPage() {
     ];
 
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {items.map((item) => (
           <Card key={item.label}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {item.label}
               </CardTitle>
-              <item.icon className="size-4 text-muted-foreground" />
+              <item.icon className={cn("size-4", item.color ?? "text-muted-foreground")} />
             </CardHeader>
             <CardContent>
               {loading ? (
                 <Skeleton className="h-6 w-24" />
               ) : (
-                <CardTitle className="text-2xl font-semibold">{item.value}</CardTitle>
+                <CardTitle className={cn("text-2xl font-semibold", item.color)}>
+                  {item.value}
+                </CardTitle>
               )}
               <p className="mt-2 text-xs text-muted-foreground">{item.sublabel}</p>
             </CardContent>
@@ -188,9 +234,10 @@ export default function PaymentsPage() {
 type PaymentListProps = {
   loading: boolean;
   payments: PaymentRecord[];
+  onRefund?: (payment: PaymentRecord) => void;
 };
 
-function PaymentList({ loading, payments }: PaymentListProps) {
+function PaymentList({ loading, payments, onRefund }: PaymentListProps) {
   if (loading) {
     return (
       <div className="space-y-4">
@@ -243,7 +290,7 @@ function PaymentList({ loading, payments }: PaymentListProps) {
           </thead>
           <tbody>
             {payments.map((payment) => (
-              <PaymentTableRow key={payment.id} payment={payment} />
+              <PaymentTableRow key={payment.id} payment={payment} onRefund={onRefund} />
             ))}
           </tbody>
         </table>
@@ -251,15 +298,23 @@ function PaymentList({ loading, payments }: PaymentListProps) {
 
       <div className="space-y-4 md:hidden">
         {payments.map((payment) => (
-          <PaymentCard key={payment.id} payment={payment} />
+          <PaymentCard key={payment.id} payment={payment} onRefund={onRefund} />
         ))}
       </div>
     </div>
   );
 }
 
-function PaymentTableRow({ payment }: { payment: PaymentRecord }) {
+function PaymentTableRow({
+  payment,
+  onRefund,
+}: {
+  payment: PaymentRecord;
+  onRefund?: (payment: PaymentRecord) => void;
+}) {
   const amount = currencyFormatter.format(payment.amountCents / 100);
+  const refundAmount = payment.refundAmountCents > 0 ? currencyFormatter.format(payment.refundAmountCents / 100) : null;
+  const netAmount = currencyFormatter.format((payment.amountCents - (payment.refundAmountCents ?? 0)) / 100);
   const formatDate = (value: string | null | undefined) => {
     if (!value) return "—";
     const date = new Date(value);
@@ -279,12 +334,17 @@ function PaymentTableRow({ payment }: { payment: PaymentRecord }) {
   };
 
   const statusBadge = statusStyles[payment.status];
+  const canRefund = onRefund && payment.status === "COMPLETED" && (payment.refundAmountCents ?? 0) < payment.amountCents;
 
   return (
     <tr className="border-t text-sm">
       <td className="px-4 py-3 align-top font-medium text-foreground">
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-1">
           <span>{amount}</span>
+          {refundAmount && (
+            <span className="text-xs text-rose-600">Refunded: -{refundAmount}</span>
+          )}
+          <span className="text-xs font-medium text-emerald-600">Net: {netAmount}</span>
           <span className="text-xs text-muted-foreground">
             {payment.stripeLinkId ?? "No link recorded"}
           </span>
@@ -308,19 +368,43 @@ function PaymentTableRow({ payment }: { payment: PaymentRecord }) {
         <div className="flex flex-col gap-1">
           <span>{formatDate(payment.createdAt)}</span>
           <span className="text-xs">Updated: {formatDate(payment.updatedAt)}</span>
+          {payment.refundedAt && (
+            <span className="text-xs text-rose-600">Refunded: {formatDate(payment.refundedAt)}</span>
+          )}
         </div>
       </td>
       <td className="px-4 py-3 align-top">
-        <Badge variant="outline" className={cn("capitalize", statusBadge.badgeClasses)}>
-          {statusBadge.label}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className={cn("capitalize", statusBadge.badgeClasses)}>
+            {statusBadge.label}
+          </Badge>
+          {canRefund && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onRefund(payment)}
+              className="h-7 gap-1 text-xs"
+            >
+              <RotateCcw className="size-3" />
+              Refund
+            </Button>
+          )}
+        </div>
       </td>
     </tr>
   );
 }
 
-function PaymentCard({ payment }: { payment: PaymentRecord }) {
+function PaymentCard({
+  payment,
+  onRefund,
+}: {
+  payment: PaymentRecord;
+  onRefund?: (payment: PaymentRecord) => void;
+}) {
   const amount = currencyFormatter.format(payment.amountCents / 100);
+  const refundAmount = payment.refundAmountCents > 0 ? currencyFormatter.format(payment.refundAmountCents / 100) : null;
+  const netAmount = currencyFormatter.format((payment.amountCents - (payment.refundAmountCents ?? 0)) / 100);
   const metadataDisplay = payment.metadata ? JSON.stringify(payment.metadata, null, 2) : null;
 
   const formatDate = (value: string | null | undefined) => {
@@ -341,13 +425,21 @@ function PaymentCard({ payment }: { payment: PaymentRecord }) {
     REFUNDED: { label: "Refunded", badgeClasses: "bg-slate-100 text-slate-600 border-slate-200" },
   };
 
+  const canRefund = onRefund && payment.status === "COMPLETED" && (payment.refundAmountCents ?? 0) < payment.amountCents;
+
   const statusBadge = statusStyles[payment.status];
 
   return (
     <Card className="flex h-full flex-col">
       <CardHeader className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="text-lg font-semibold">{amount}</CardTitle>
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-lg font-semibold">{amount}</CardTitle>
+            {refundAmount && (
+              <span className="text-xs text-rose-600">Refunded: -{refundAmount}</span>
+            )}
+            <span className="text-xs font-medium text-emerald-600">Net: {netAmount}</span>
+          </div>
           <Badge variant="outline" className={cn("capitalize", statusBadge.badgeClasses)}>
             {statusBadge.label}
           </Badge>
@@ -362,6 +454,17 @@ function PaymentCard({ payment }: { payment: PaymentRecord }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm text-muted-foreground">
+        {canRefund && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onRefund(payment)}
+            className="w-full gap-2"
+          >
+            <RotateCcw className="size-4" />
+            Refund Payment
+          </Button>
+        )}
         <div className="flex items-center justify-between">
           <span>Created</span>
           <span className="font-medium text-foreground">{formatDate(payment.createdAt)}</span>
@@ -370,6 +473,12 @@ function PaymentCard({ payment }: { payment: PaymentRecord }) {
           <span>Last updated</span>
           <span>{formatDate(payment.updatedAt)}</span>
         </div>
+        {payment.refundedAt && (
+          <div className="flex items-center justify-between">
+            <span className="text-rose-600">Refunded</span>
+            <span className="font-medium text-rose-600">{formatDate(payment.refundedAt)}</span>
+          </div>
+        )}
         {payment.stripeLinkId ? (
           <div className="flex items-center justify-between">
             <span>Stripe link ID</span>

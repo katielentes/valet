@@ -17,6 +17,7 @@ import { registerTicketRoutes } from "./routes/tickets";
 import { registerMessageRoutes } from "./routes/messages";
 import { registerLocationRoutes } from "./routes/locations";
 import { registerPaymentRoutes } from "./routes/payments";
+import { registerReportRoutes } from "./routes/reports";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = process.env.HOST || "0.0.0.0";
@@ -46,6 +47,7 @@ async function bootstrap() {
   registerMessageRoutes(server);
   registerLocationRoutes(server);
   registerPaymentRoutes(server);
+  registerReportRoutes(server);
 
   server.get("/api/auth/session", async (req, res) => {
     try {

@@ -42,8 +42,16 @@ This document summarizes the operating policies enforced (or expected to be enfo
 
 ### Hourly vs. Overnight Billing
 - Each location defines fixed tiers instead of per-hour billing:
-  - **Hampton Inn:** Single tier at $20 covering up to 3 hours; anything beyond 3 hours (or in/out privileges) charges the overnight rate ($46).
-  - **Hyatt Regency:** Two tiers – up to 2 hours for $22, up to 5 hours for $33; parking beyond 5 hours (or in/out privileges) charges the overnight rate ($55).
+  - **Hampton Inn:** Single tier at $20 covering up to 3 hours; anything beyond 3 hours (or in/out privileges) charges the overnight rate per day ($46/day).
+  - **Hyatt Regency:** Two tiers – up to 2 hours for $22, up to 5 hours for $33; parking beyond 5 hours (or in/out privileges) charges the overnight rate per day ($55/day).
+- **Multi-Day Billing**: For tickets active more than 24 hours, the overnight rate is charged per day:
+  - More than 24 hours: overnight rate × 2
+  - More than 48 hours: overnight rate × 3
+  - And so on (rounded up to full days)
+- This applies to:
+  - Tickets with in/out privileges (always charged per day)
+  - Overnight tickets (charged per day)
+  - Hourly tickets that exceed their tier threshold (charged per day after exceeding tier)
 - Prepaid tiers must be satisfied before a car can be marked `READY_FOR_PICKUP` or `COMPLETED`. If a stay crosses into the overnight tier, the outstanding difference is collected automatically.
 - The pricing utility enforces these thresholds when computing projected balances, ensuring SMS/payment flows always reference the correct amount.
 

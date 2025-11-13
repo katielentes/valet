@@ -8,6 +8,11 @@ import { hasTwilioConfig, sendSms } from "../lib/twilio";
 import { calculateProjectedAmountCents } from "../utils/pricing";
 import { Ticket, Location, UserRole } from "../../src/generated/prisma/client";
 
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
 type TicketWithLocation = Ticket & { location: Location };
 
 type SendPaymentLinkOptions = {
@@ -72,7 +77,9 @@ export async function sendPaymentLinkForTicket({
     },
     after_completion: {
       type: "redirect",
-      redirect_url: process.env.PAYMENT_SUCCESS_URL ?? "https://example.com/thanks",
+      redirect: {
+        url: process.env.PAYMENT_SUCCESS_URL ?? "https://example.com/thanks",
+      },
     },
   });
 
@@ -145,6 +152,12 @@ const createLinkSchema = z.object({
   message: z.string().max(500).optional(),
 });
 
+const refundSchema = z.object({
+  paymentId: z.string(),
+  amountCents: z.number().int().positive().optional(), // Optional: if not provided, refund full amount
+  reason: z.string().max(500).optional(),
+});
+
 const listPaymentsQuerySchema = z.object({
   status: z
     .enum(["PENDING", "PAYMENT_LINK_SENT", "COMPLETED", "FAILED", "REFUNDED"])
@@ -213,11 +226,14 @@ export function registerPaymentRoutes(router: Router) {
         id: payment.id,
         status: payment.status,
         amountCents: payment.amountCents,
+        refundAmountCents: payment.refundAmountCents ?? 0,
+        refundedAt: payment.refundedAt?.toISOString() ?? null,
+        stripeRefundId: payment.stripeRefundId ?? null,
         stripeLinkId: payment.stripeLinkId,
         stripeProduct: payment.stripeProduct,
         metadata: payment.metadata ?? null,
         createdAt: payment.createdAt,
-        updatedAt: payment.updatedAt,
+        updatedAt: payment.completedAt ?? payment.createdAt,
         ticket: {
           id: payment.ticket.id,
           ticketNumber: payment.ticket.ticketNumber,
@@ -237,9 +253,16 @@ export function registerPaymentRoutes(router: Router) {
           if (payment.status === "COMPLETED") {
             acc.completedCount += 1;
             acc.completedAmountCents += payment.amountCents;
+          } else if (payment.status === "REFUNDED") {
+            acc.refundedCount += 1;
+            acc.refundedAmountCents += payment.refundAmountCents;
           } else {
             acc.pendingCount += 1;
             acc.pendingAmountCents += payment.amountCents;
+          }
+          // Track refunds separately (even if payment is still COMPLETED with partial refund)
+          if (payment.refundAmountCents > 0) {
+            acc.totalRefundedAmountCents += payment.refundAmountCents;
           }
           return acc;
         },
@@ -247,8 +270,11 @@ export function registerPaymentRoutes(router: Router) {
           totalCount: 0,
           completedCount: 0,
           pendingCount: 0,
+          refundedCount: 0,
           completedAmountCents: 0,
           pendingAmountCents: 0,
+          refundedAmountCents: 0,
+          totalRefundedAmountCents: 0,
         }
       );
 
@@ -317,6 +343,218 @@ export function registerPaymentRoutes(router: Router) {
     } catch (error) {
       console.error("Failed to create payment link", error);
       res.status(500).json({ error: "Failed to create payment link" });
+    }
+  });
+
+  router.post("/api/payments/refund", async (req, res) => {
+    const session = await resolveSession(req);
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Only admins and managers can refund
+    if (session.user.role !== UserRole.ADMIN && session.user.role !== UserRole.MANAGER) {
+      res.status(403).json({ error: "Only admins and managers can process refunds" });
+      return;
+    }
+
+    const parsed = refundSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid refund payload" });
+      return;
+    }
+
+    const { paymentId, amountCents, reason } = parsed.data;
+
+    try {
+      const payment = await prisma.payment.findFirst({
+        where: {
+          id: paymentId,
+          tenantId: session.tenantId,
+        },
+        include: {
+          ticket: {
+            include: {
+              location: true,
+            },
+          },
+        },
+      });
+
+      if (!payment) {
+        res.status(404).json({ error: "Payment not found" });
+        return;
+      }
+
+      if (payment.status !== "COMPLETED") {
+        res.status(400).json({ error: "Only completed payments can be refunded" });
+        return;
+      }
+
+      if (payment.refundAmountCents && payment.refundAmountCents >= payment.amountCents) {
+        res.status(400).json({ error: "Payment has already been fully refunded" });
+        return;
+      }
+
+      const refundAmountCents = amountCents ?? payment.amountCents;
+      const alreadyRefunded = payment.refundAmountCents ?? 0;
+      const remainingRefundable = payment.amountCents - alreadyRefunded;
+
+      if (refundAmountCents > remainingRefundable) {
+        res.status(400).json({
+          error: `Cannot refund more than $${(remainingRefundable / 100).toFixed(2)}. $${((alreadyRefunded) / 100).toFixed(2)} has already been refunded.`,
+        });
+        return;
+      }
+
+      if (!hasStripeConfig) {
+        res.status(500).json({ error: "Stripe is not configured. Cannot process refund." });
+        return;
+      }
+
+      const stripe = getStripeClient();
+
+      // Get payment sessions from the payment link to find the payment intent
+      let paymentIntentId: string | null = null;
+      try {
+        const paymentLink = await stripe.paymentLinks.retrieve(payment.stripeLinkId);
+        // Payment links don't directly expose payment intents, so we need to search for checkout sessions
+        // For now, we'll try to list checkout sessions for this payment link
+        // In production, you'd want to store the payment intent ID when the payment is completed via webhook
+        const checkoutSessions = await stripe.checkout.sessions.list({
+          payment_link: paymentLink.id,
+          limit: 1,
+        });
+
+        if (checkoutSessions.data.length > 0 && checkoutSessions.data[0].payment_intent) {
+          paymentIntentId =
+            typeof checkoutSessions.data[0].payment_intent === "string"
+              ? checkoutSessions.data[0].payment_intent
+              : checkoutSessions.data[0].payment_intent.id;
+        }
+      } catch (error) {
+        console.error("Failed to retrieve payment intent from payment link", error);
+      }
+
+      if (!paymentIntentId) {
+        // If we can't find the payment intent, we can still record the refund in our system
+        // but we'll need to handle Stripe refunds manually or via webhook
+        console.warn(`Could not find payment intent for payment ${paymentId}. Recording refund in database only.`);
+      }
+
+      let stripeRefundId: string | null = null;
+      if (paymentIntentId) {
+        try {
+          const refund = await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            amount: refundAmountCents,
+            reason: reason ? "requested_by_customer" : undefined,
+            metadata: {
+              paymentId: payment.id,
+              ticketId: payment.ticketId,
+              tenantId: session.tenantId,
+              refundedBy: session.user.id,
+              reason: reason ?? "No reason provided",
+            },
+          });
+          stripeRefundId = refund.id;
+        } catch (error) {
+          console.error("Failed to create Stripe refund", error);
+          res.status(500).json({
+            error: "Failed to process refund in Stripe. Please try again or contact support.",
+          });
+          return;
+        }
+      }
+
+      const newRefundAmount = (payment.refundAmountCents ?? 0) + refundAmountCents;
+      const isFullyRefunded = newRefundAmount >= payment.amountCents;
+
+      const updatedPayment = await prisma.payment.update({
+        where: { id: paymentId },
+        data: {
+          refundAmountCents: newRefundAmount,
+          refundedAt: newRefundAmount >= payment.amountCents ? new Date() : payment.refundedAt ?? new Date(),
+          status: isFullyRefunded ? "REFUNDED" : payment.status,
+          stripeRefundId: stripeRefundId ?? payment.stripeRefundId,
+          metadata: {
+            ...((payment.metadata as Record<string, unknown>) ?? {}),
+            refunds: [
+              ...((payment.metadata as Record<string, unknown>)?.refunds as Array<unknown> ?? []),
+              {
+                amountCents: refundAmountCents,
+                refundedAt: new Date().toISOString(),
+                refundedBy: session.user.id,
+                refundedByName: session.user.name,
+                stripeRefundId,
+                reason: reason ?? null,
+              },
+            ],
+          },
+        },
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          tenantId: session.tenantId,
+          ticketId: payment.ticketId,
+          userId: session.userId ?? null,
+          action: "PAYMENT_REFUNDED",
+          details: {
+            ticketNumber: payment.ticket.ticketNumber,
+            paymentId: payment.id,
+            refundAmountCents,
+            totalRefundedCents: newRefundAmount,
+            isFullRefund: isFullyRefunded,
+            stripeRefundId,
+            reason: reason ?? null,
+          },
+        },
+      });
+
+      // Send SMS confirmation to customer if phone number exists
+      if (payment.ticket.customerPhone && hasTwilioConfig) {
+        try {
+          const refundAmountDisplay = currencyFormatter.format(refundAmountCents / 100);
+          const messageBody = `ValetPro: Your refund of $${refundAmountDisplay} for ticket ${payment.ticket.ticketNumber} has been processed. ${isFullyRefunded ? "This was a full refund." : "This was a partial refund."}${stripeRefundId ? ` Refund ID: ${stripeRefundId}` : ""}`;
+
+          await sendSms({
+            to: payment.ticket.customerPhone,
+            body: messageBody,
+          });
+
+          await prisma.message.create({
+            data: {
+              tenantId: session.tenantId,
+              ticketId: payment.ticketId,
+              direction: "OUTBOUND",
+              body: messageBody,
+              deliveryStatus: "SENT",
+              metadata: {
+                paymentId: payment.id,
+                refundAmountCents,
+                isFullRefund: isFullyRefunded,
+                stripeRefundId,
+                automated: true,
+                reason: "refund_confirmation",
+              },
+            },
+          });
+        } catch (smsError) {
+          console.error("Failed to send refund confirmation SMS", smsError);
+          // Don't fail the refund if SMS fails
+        }
+      }
+
+      res.json({
+        payment: updatedPayment,
+        refundAmountCents,
+        isFullRefund: isFullyRefunded,
+      });
+    } catch (error) {
+      console.error("Failed to process refund", error);
+      res.status(500).json({ error: "Failed to process refund" });
     }
   });
 }

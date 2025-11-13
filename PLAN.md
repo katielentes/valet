@@ -73,6 +73,7 @@
 - **2025-11-11** — Added Stripe payment link workflow with Twilio SMS delivery, payment records, and UI to send links per ticket.
 - **2025-11-12** — Automated welcome SMS on ticket creation, enforced in/out payment requirements, and added Twilio inbound handler to trigger outstanding balance payment links and capture return intents.
 - **2025-11-12** — Updated ticket card visuals (vehicle border indicates WITH_US/AWAY, badges for in/out privileges), adjusted Hampton/Hyatt tiered pricing logic, seeded additional Hampton scenarios, added Sonner-based toast system, and modernized edit dialog layout (sticky header/footer, scrollable body). Payments page now renders a table layout on desktop with responsive cards on mobile.
+- **2025-11-13** — Implemented refund functionality for admins and managers: added refund fields to Payment schema, created refund API endpoint with Stripe integration, updated payments page UI with refund dialog and refunded amounts display, updated reports to show refunded amounts separately, and added SMS confirmation for refunds. **NOTE: Payments and refunds need thorough testing once Twilio and Stripe are fully configured.**
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.
@@ -80,17 +81,28 @@
 - Before starting new development sessions, review this plan and related docs (`docs/business-payment-rules.md`, `docs/future-multi-tenant-state.md`, `context.md`) to ensure alignment on priorities and open items.
 
 ## Next Steps
-1. **Stripe Multi-Tenant Support**
+1. **Locations Page & Pricing Configuration** (PRIORITY - Deferred)
+   - Build Locations management page for viewing and editing location settings.
+   - **Pricing Model Configuration**: Allow each tenant to configure custom pricing per location:
+     - Support two pricing models:
+       - **Flat Rate Chunks**: Define fixed rates for time periods (e.g., $20 for up to 3 hours, then $46 overnight)
+       - **Hourly Rate**: Per-hour billing with optional tier escalation to overnight rate
+     - Store pricing configuration in Location model (may need schema update for pricing tiers/chunks as JSON)
+     - Update pricing calculation logic (`server/utils/pricing.ts`) to be dynamic based on location configuration instead of hardcoded Hampton/Hyatt logic
+     - **Role-Based Access**: Only MANAGER and ADMIN roles can edit location pricing settings (STAFF is read-only)
+   - Allow editing of tax rates and hotel share percentages per location
+   - UI should provide intuitive forms for configuring pricing tiers/chunks with validation
+2. **Stripe Multi-Tenant Support**
    - Implement tenant-level Stripe credential storage (per `docs/future-multi-tenant-state.md`).
    - Add Connect onboarding flow and update payment link creation to target tenant accounts.
    - Build admin UI for verifying Stripe status, disconnecting/reconnecting tenants, and audit logging configuration changes.
-2. **Reporting Enhancements**
+3. **Reporting Enhancements**
    - Surface payment summaries by location (completed vs pending) with export options.
    - Add weekly/monthly dashboards leveraging Prisma aggregates and TanStack Query caching strategies already in place.
-3. **Messaging & Notifications**
+4. **Messaging & Notifications**
    - Expand toast usage to other critical flows (new ticket, payment failure) and document UI feedback patterns.
    - Introduce escalations for overdue payments (e.g., scheduled reminders, manager alerts).
-4. **Performance & Testing**
+5. **Performance & Testing**
    - Cover pricing tiers with unit tests to ensure Hampton/Hyatt scenarios remain accurate as new locations are added.
    - Integrate end-to-end tests for edit dialog accessibility (keyboard navigation, scroll behaviour across breakpoints).
 
@@ -103,5 +115,6 @@
 - Mobile-first UI: responsive ticket cards, stacked action buttons, accessible modals, consistent spacing on small screens.
 - Reporting: weekly/monthly analytics, vehicle status breakdowns, financial summaries including taxes, hotel share, projected revenue.
 - Financial configuration: Chicago tax (23.25%) and hotel revenue share (Hampton 5%, Hyatt 6%) editable per location.
+- **Custom Pricing Models**: Each tenant can configure their own pricing model per location (flat rate chunks or hourly) - only managers and admins can edit. This will be implemented on the Locations page.
 - Multi-tenant readiness: user authentication, role-based access, tenant isolation planning, ticket audit logs with timestamps and user identity.
 - UX details: rate type icons (hourly ⏱️, overnight 🌙), alert banners for location selection, scrollable modals, responsive badge layout.

@@ -2,9 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 
 import prisma from "../lib/prisma";
+import { Prisma } from "../../src/generated/prisma/client";
 import { resolveSession } from "../lib/session";
 import { calculateProjectedAmountCents } from "../utils/pricing";
 import { hasTwilioConfig, sendSms } from "../lib/twilio";
+import { TicketStatus } from "../../src/generated/prisma/client";
 
 const querySchema = z.object({
   locationId: z.string().optional(),
@@ -77,7 +79,7 @@ export function registerTicketRoutes(router: Router) {
     try {
       const statusFilter = status
         ? { status }
-        : { status: { in: ["CHECKED_IN", "READY_FOR_PICKUP"] as const } };
+        : { status: { in: [TicketStatus.CHECKED_IN, TicketStatus.READY_FOR_PICKUP] } };
 
       const tickets = await prisma.ticket.findMany({
         where: {
@@ -108,7 +110,9 @@ export function registerTicketRoutes(router: Router) {
         const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
         const hasCompletedPayment = completedPayments.length > 0;
         const paymentComplete = outstandingAmountCents <= 0;
-        const elapsedMs = Math.max(new Date().getTime() - ticket.checkInTime.getTime(), 0);
+        // Ensure checkInTime is a Date object for calculation
+        const checkInTime = ticket.checkInTime instanceof Date ? ticket.checkInTime : new Date(ticket.checkInTime);
+        const elapsedMs = Math.max(new Date().getTime() - checkInTime.getTime(), 0);
         const elapsedHours = Math.round((elapsedMs / (1000 * 60 * 60)) * 10) / 10;
 
         return {
@@ -417,9 +421,15 @@ export function registerTicketRoutes(router: Router) {
         return;
       }
 
+      // Convert checkInTime string to Date if provided
+      const updateData = {
+        ...updates,
+        ...(updates.checkInTime ? { checkInTime: new Date(updates.checkInTime) } : {}),
+      };
+
       const updatedTicket = await prisma.ticket.update({
         where: { id: ticketId },
-        data: updates,
+        data: updateData,
         include: {
           location: true,
         },
@@ -428,11 +438,11 @@ export function registerTicketRoutes(router: Router) {
       const changes: Record<string, { from: unknown; to: unknown }> = {};
       for (const [key, value] of Object.entries(updates)) {
         const previous = (existingTicket as Record<string, unknown>)[key];
-        if (previous instanceof Date || typeof value === "string" && key === "checkInTime") {
-          const previousIso = previous instanceof Date ? previous.toISOString() : previous;
-          const nextIso = value instanceof Date ? value.toISOString() : value;
+        if (key === "checkInTime") {
+          const previousIso = previous instanceof Date ? previous.toISOString() : String(previous ?? "");
+          const nextIso = String(value ?? "");
           if (previousIso !== nextIso) {
-            changes[key] = { from: previousIso ?? null, to: nextIso ?? null };
+            changes[key] = { from: previousIso || null, to: nextIso || null };
           }
         } else if (previous !== value) {
           changes[key] = { from: previous ?? null, to: value ?? null };
@@ -449,7 +459,7 @@ export function registerTicketRoutes(router: Router) {
             details: {
               ticketNumber: existingTicket.ticketNumber,
               changes,
-            },
+            } as Prisma.InputJsonValue,
           },
         });
       }

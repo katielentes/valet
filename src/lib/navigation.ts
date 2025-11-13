@@ -37,7 +37,6 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Reports",
     href: "/reports",
     icon: PieChart,
-    comingSoon: true,
   },
   {
     label: "Messaging",
