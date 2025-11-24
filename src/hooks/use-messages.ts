@@ -135,3 +135,24 @@ export function useDeleteTemplate() {
   });
 }
 
+type MessagingStatus = {
+  enabled: boolean;
+  disabled: boolean;
+  configured: boolean;
+  message: string;
+};
+
+export function useMessagingStatus() {
+  return useQuery<MessagingStatus>({
+    queryKey: ["messagingStatus"],
+    queryFn: async () => {
+      const response = await fetch("/api/messages/status", { credentials: "include" });
+      if (!response.ok) {
+        throw new Error("Failed to load messaging status");
+      }
+      return response.json();
+    },
+    staleTime: 1000 * 60, // Cache for 1 minute
+  });
+}
+

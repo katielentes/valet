@@ -12,8 +12,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
@@ -169,14 +167,19 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>New ticket</DialogTitle>
-          <DialogDescription>Capture customer and vehicle details to create a valet ticket.</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="flex max-h-[min(90vh,720px)] max-w-3xl flex-col overflow-hidden p-0 sm:p-0">
+        <div className="sticky top-0 z-10 border-b bg-card/95 px-6 pb-4 pt-5 backdrop-blur">
+          <DialogTitle className="text-lg font-semibold">New ticket</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+            Capture customer and vehicle details to create a valet ticket.
+          </DialogDescription>
+        </div>
 
         <Form {...form}>
-          <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
+          <form
+            className="flex-1 overflow-y-auto px-6 pb-32 pt-6 [scrollbar-width:thin]"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <div className="grid gap-4 md:grid-cols-3">
               <FormField
                 control={form.control}
@@ -392,7 +395,7 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         {feedback ? (
           <div
             className={cn(
-              "rounded-md border p-2 text-sm",
+              "mx-6 mb-4 rounded-md border p-2 text-sm",
               feedback.type === "success"
                 ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                 : "border-destructive/40 bg-destructive/10 text-destructive"
@@ -402,26 +405,28 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
           </div>
         ) : null}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            onClick={onSubmit}
-            disabled={createTicket.isPending || locationsLoading}
-            className="gap-2"
-          >
-            {createTicket.isPending ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Creating…
-              </>
-            ) : (
-              "Create ticket"
-            )}
-          </Button>
-        </DialogFooter>
+        <div className="sticky bottom-0 z-10 border-t bg-card/95 px-6 py-4 backdrop-blur">
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={onSubmit}
+              disabled={createTicket.isPending || locationsLoading}
+              className="gap-2"
+            >
+              {createTicket.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Creating…
+                </>
+              ) : (
+                "Create ticket"
+              )}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

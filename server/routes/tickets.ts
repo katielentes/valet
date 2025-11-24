@@ -5,7 +5,7 @@ import prisma from "../lib/prisma";
 import { Prisma } from "../../src/generated/prisma/client";
 import { resolveSession } from "../lib/session";
 import { calculateProjectedAmountCents } from "../utils/pricing";
-import { hasTwilioConfig, sendSms } from "../lib/twilio";
+import { hasTwilioConfig, isSmsSendingDisabled, sendSms } from "../lib/twilio";
 import { TicketStatus } from "../../src/generated/prisma/client";
 
 const querySchema = z.object({
@@ -258,7 +258,7 @@ export function registerTicketRoutes(router: Router) {
         },
       });
 
-      if (hasTwilioConfig && ticket.customerPhone) {
+      if (hasTwilioConfig && !isSmsSendingDisabled && ticket.customerPhone) {
         const valetNumber = process.env.TWILIO_FROM_NUMBER ?? "this number";
         let welcomeMessage = `Hi ${ticket.customerName}, welcome to ValetPro at ${ticket.location.name}. Text ${valetNumber} with your ticket ${ticket.ticketNumber} when you're ready for your vehicle.`;
         if (ticket.inOutPrivileges) {

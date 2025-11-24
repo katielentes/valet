@@ -4,7 +4,7 @@ import { z } from "zod";
 import prisma from "../lib/prisma";
 import { resolveSession } from "../lib/session";
 import { hasStripeConfig, getStripeClient } from "../lib/stripe";
-import { hasTwilioConfig, sendSms } from "../lib/twilio";
+import { hasTwilioConfig, isSmsSendingDisabled, sendSms } from "../lib/twilio";
 import { calculateProjectedAmountCents } from "../utils/pricing";
 import { Ticket, Location, UserRole } from "../../src/generated/prisma/client";
 
@@ -40,6 +40,10 @@ export async function sendPaymentLinkForTicket({
 }: SendPaymentLinkOptions) {
   if (!hasStripeConfig) {
     throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY to enable payment links.");
+  }
+
+  if (isSmsSendingDisabled) {
+    throw new Error("SMS sending is currently disabled. Set DISABLE_SMS_SENDING=false to enable.");
   }
 
   if (!hasTwilioConfig) {
@@ -514,7 +518,7 @@ export function registerPaymentRoutes(router: Router) {
       });
 
       // Send SMS confirmation to customer if phone number exists
-      if (payment.ticket.customerPhone && hasTwilioConfig) {
+      if (payment.ticket.customerPhone && hasTwilioConfig && !isSmsSendingDisabled) {
         try {
           const refundAmountDisplay = currencyFormatter.format(refundAmountCents / 100);
           const messageBody = `ValetPro: Your refund of $${refundAmountDisplay} for ticket ${payment.ticket.ticketNumber} has been processed. ${isFullyRefunded ? "This was a full refund." : "This was a partial refund."}${stripeRefundId ? ` Refund ID: ${stripeRefundId}` : ""}`;

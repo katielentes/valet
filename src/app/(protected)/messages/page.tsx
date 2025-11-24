@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { SendMessageDialog } from "@/components/messages/send-message-dialog";
+import { useMessagingStatus } from "@/hooks/use-messages";
 import type { Ticket } from "@/hooks/use-tickets";
 
 type MessageRecord = {
@@ -49,6 +50,8 @@ export default function MessagesPage() {
   const [directionFilter, setDirectionFilter] = useState<"all" | "INBOUND" | "OUTBOUND">("all");
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const { data: statusData } = useMessagingStatus();
+  const isMessagingDisabled = statusData?.disabled ?? false;
 
   const { data, isLoading, error } = useQuery<MessagesResponse>({
     queryKey: ["messages", location, directionFilter],
@@ -157,6 +160,15 @@ export default function MessagesPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Messages</h1>
         <p className="text-sm text-muted-foreground">View and manage customer communications</p>
       </div>
+
+      {isMessagingDisabled && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-800">SMS sending is currently disabled</p>
+          <p className="mt-1 text-xs text-amber-700">
+            {statusData?.message || "Set DISABLE_SMS_SENDING=false to enable messaging."}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">

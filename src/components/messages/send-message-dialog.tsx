@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
-import { useSendMessage, useMessageTemplates, useMessages } from "@/hooks/use-messages";
+import { useSendMessage, useMessageTemplates, useMessages, useMessagingStatus } from "@/hooks/use-messages";
 import type { Ticket } from "@/hooks/use-tickets";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,9 +41,11 @@ export function SendMessageDialog({ ticket, open, onOpenChange }: SendMessageDia
   const sendMessage = useSendMessage();
   const { data: templateData } = useMessageTemplates();
   const { data: messageData, isLoading: messagesLoading } = useMessages(ticket?.id ?? null);
+  const { data: statusData } = useMessagingStatus();
 
   const templates = templateData?.templates ?? [];
   const recentMessages = messageData?.messages ?? [];
+  const isMessagingDisabled = statusData?.disabled ?? false;
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,7 +73,7 @@ export function SendMessageDialog({ ticket, open, onOpenChange }: SendMessageDia
     }
   });
 
-  const disabled = sendMessage.isPending || !ticket;
+  const disabled = sendMessage.isPending || !ticket || isMessagingDisabled;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,6 +84,15 @@ export function SendMessageDialog({ ticket, open, onOpenChange }: SendMessageDia
             Send a text message to {ticket?.customerName} ({ticket?.customerPhone}).
           </DialogDescription>
         </DialogHeader>
+
+        {isMessagingDisabled && (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="font-medium">SMS sending is currently disabled</p>
+            <p className="mt-1 text-xs">
+              {statusData?.message || "Set DISABLE_SMS_SENDING=false to enable messaging."}
+            </p>
+          </div>
+        )}
 
         <div className="space-y-6">
           <div className="rounded-md border bg-muted/20 p-3 text-sm">
