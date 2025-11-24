@@ -74,6 +74,7 @@
 - **2025-11-12** — Automated welcome SMS on ticket creation, enforced in/out payment requirements, and added Twilio inbound handler to trigger outstanding balance payment links and capture return intents.
 - **2025-11-12** — Updated ticket card visuals (vehicle border indicates WITH_US/AWAY, badges for in/out privileges), adjusted Hampton/Hyatt tiered pricing logic, seeded additional Hampton scenarios, added Sonner-based toast system, and modernized edit dialog layout (sticky header/footer, scrollable body). Payments page now renders a table layout on desktop with responsive cards on mobile.
 - **2025-11-13** — Implemented refund functionality for admins and managers: added refund fields to Payment schema, created refund API endpoint with Stripe integration, updated payments page UI with refund dialog and refunded amounts display, updated reports to show refunded amounts separately, and added SMS confirmation for refunds. **NOTE: Payments and refunds need thorough testing once Twilio and Stripe are fully configured.**
+- **2025-11-24** — Messaging system fully operational: Twilio webhook configured and working, inbound messages are being received and saved correctly, Messages page displays all messages. **CRITICAL TODO: Stripe Payment Status Updates** — Payments created via Stripe payment links remain in "PENDING" status and never update to "COMPLETED". Need to implement Stripe webhook handler to listen for `checkout.session.completed` and `payment_intent.succeeded` events to automatically update payment status. This is blocking both testing (sandbox) and production. See "Payment Status Webhook" in Next Steps below.
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.
@@ -81,7 +82,23 @@
 - Before starting new development sessions, review this plan and related docs (`docs/business-payment-rules.md`, `docs/future-multi-tenant-state.md`, `context.md`) to ensure alignment on priorities and open items.
 
 ## Next Steps
-1. **Locations Page & Pricing Configuration** (PRIORITY - Deferred)
+1. **Payment Status Webhook** (CRITICAL - Blocking Testing & Production)
+   - **Problem**: Payments created via Stripe payment links stay in "PENDING" status and never update to "COMPLETED", even after successful payment in Stripe sandbox/test mode.
+   - **Solution**: Implement Stripe webhook endpoint (`/api/webhooks/stripe`) to handle:
+     - `checkout.session.completed` event - Update payment status to "COMPLETED" when checkout session completes
+     - `payment_intent.succeeded` event - Alternative event that indicates successful payment
+     - Verify webhook signature using `STRIPE_WEBHOOK_SECRET` environment variable
+     - Lookup payment by `stripeLinkId` or metadata `ticketId` from webhook event
+     - Update payment record: set `status = "COMPLETED"`, set `completedAt = now()`
+     - Update ticket's `amountPaidCents` if needed
+     - Log webhook events for debugging
+   - **Testing**: Use Stripe CLI (`stripe listen --forward-to localhost:3000/api/webhooks/stripe`) for local testing, configure webhook URL in Stripe Dashboard for production
+   - **Files to modify**: 
+     - Create `server/routes/webhooks.ts` or add to `server/routes/payments.ts`
+     - Register webhook route in `server/index.ts`
+     - Add `STRIPE_WEBHOOK_SECRET` to `env.example`
+   - **Reference**: Stripe webhook docs, `docs/future-multi-tenant-state.md` has webhook routing notes
+2. **Locations Page & Pricing Configuration** (PRIORITY - Deferred)
    - Build Locations management page for viewing and editing location settings.
    - **Pricing Model Configuration**: Allow each tenant to configure custom pricing per location:
      - Support two pricing models:
