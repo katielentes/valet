@@ -193,30 +193,35 @@ async function main() {
   const twoHoursAgo = new Date(now.getTime() - 1000 * 60 * 60 * 2);
   const sixteenHoursAgo = new Date(now.getTime() - 1000 * 60 * 60 * 16);
 
-  const hamptonTicket = await prisma.ticket.upsert({
+  const existingHamptonTicket = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1001",
-      },
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1001",
     },
-    update: {
-      customerName: "Jordan Price",
-      customerPhone: "+13125550100",
-      vehicleMake: "Tesla",
-      vehicleModel: "Model 3",
-      vehicleColor: "Blue",
-      licensePlate: "IL-VAL100",
-      parkingLocation: "Deck A - Spot 12",
-      rateType: RateType.HOURLY,
-      inOutPrivileges: true,
-      status: TicketStatus.READY_FOR_PICKUP,
-      vehicleStatus: VehicleStatus.WITH_US,
-      checkInTime: twoHoursAgo,
-      assignedUserId: manager.id,
-      notes: "Customer requested text when car is ready.",
-    },
-    create: {
+  });
+
+  const hamptonTicket = existingHamptonTicket
+    ? await prisma.ticket.update({
+        where: { id: existingHamptonTicket.id },
+        data: {
+          customerName: "Jordan Price",
+          customerPhone: "+13125550100",
+          vehicleMake: "Tesla",
+          vehicleModel: "Model 3",
+          vehicleColor: "Blue",
+          licensePlate: "IL-VAL100",
+          parkingLocation: "Deck A - Spot 12",
+          rateType: RateType.HOURLY,
+          inOutPrivileges: true,
+          status: TicketStatus.READY_FOR_PICKUP,
+          vehicleStatus: VehicleStatus.WITH_US,
+          checkInTime: twoHoursAgo,
+          assignedUserId: manager.id,
+          notes: "Customer requested text when car is ready.",
+        },
+      })
+    : await prisma.ticket.create({
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1001",
@@ -237,30 +242,35 @@ async function main() {
     },
   });
 
-  const hyattTicket = await prisma.ticket.upsert({
+  const existingHyattTicket = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HYATT-2001",
-      },
+      tenantId: tenant.id,
+      locationId: hyatt.id,
+      ticketNumber: "HYATT-2001",
     },
-    update: {
-      customerName: "Taylor Rivers",
-      customerPhone: "+13125550200",
-      vehicleMake: "BMW",
-      vehicleModel: "X5",
-      vehicleColor: "Black",
-      licensePlate: "IL-VAL200",
-      parkingLocation: "Tower B - Spot 8",
-      rateType: RateType.OVERNIGHT,
-      inOutPrivileges: false,
-      status: TicketStatus.CHECKED_IN,
-      vehicleStatus: VehicleStatus.WITH_US,
-      checkInTime: sixteenHoursAgo,
-      assignedUserId: staff.id,
-      notes: "Guest requested car at 9 AM.",
-    },
-    create: {
+  });
+
+  const hyattTicket = existingHyattTicket
+    ? await prisma.ticket.update({
+        where: { id: existingHyattTicket.id },
+        data: {
+          customerName: "Taylor Rivers",
+          customerPhone: "+13125550200",
+          vehicleMake: "BMW",
+          vehicleModel: "X5",
+          vehicleColor: "Black",
+          licensePlate: "IL-VAL200",
+          parkingLocation: "Tower B - Spot 8",
+          rateType: RateType.OVERNIGHT,
+          inOutPrivileges: false,
+          status: TicketStatus.CHECKED_IN,
+          vehicleStatus: VehicleStatus.WITH_US,
+          checkInTime: sixteenHoursAgo,
+          assignedUserId: staff.id,
+          notes: "Guest requested car at 9 AM.",
+        },
+      })
+    : await prisma.ticket.create({
       tenantId: tenant.id,
       locationId: hyatt.id,
       ticketNumber: "HYATT-2001",
@@ -344,15 +354,16 @@ async function main() {
   });
 
   // Additional Hampton tickets for scenario coverage
-  await prisma.ticket.upsert({
+  const existingTicket2 = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1002",
-      },
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1002",
     },
-    update: {},
-    create: {
+  });
+
+  if (!existingTicket2) {
+    await prisma.ticket.create({
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1002",
@@ -372,15 +383,16 @@ async function main() {
     },
   });
 
-  await prisma.ticket.upsert({
+  const existingTicket3 = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1003",
-      },
+      tenantId: tenant.id,
+      locationId: hampton.id,
+      ticketNumber: "HAMP-1003",
     },
-    update: {},
-    create: {
+  });
+
+  if (!existingTicket3) {
+    await prisma.ticket.create({
       tenantId: tenant.id,
       locationId: hampton.id,
       ticketNumber: "HAMP-1003",
@@ -400,17 +412,20 @@ async function main() {
     },
   });
 
-  const hamptonTicket4 = await prisma.ticket.upsert({
+  const existingTicket4 = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1004",
-      },
-    },
-    update: {},
-    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
+      ticketNumber: "HAMP-1004",
+    },
+  });
+
+  const hamptonTicket4 = existingTicket4
+    ? existingTicket4
+    : await prisma.ticket.create({
+      data: {
+        tenantId: tenant.id,
+        locationId: hampton.id,
       ticketNumber: "HAMP-1004",
       customerName: "Jamie Chen",
       customerPhone: "+13125550500",
@@ -428,17 +443,20 @@ async function main() {
     },
   });
 
-  const hamptonTicket5 = await prisma.ticket.upsert({
+  const existingTicket5 = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1005",
-      },
-    },
-    update: {},
-    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
+      ticketNumber: "HAMP-1005",
+    },
+  });
+
+  const hamptonTicket5 = existingTicket5
+    ? existingTicket5
+    : await prisma.ticket.create({
+      data: {
+        tenantId: tenant.id,
+        locationId: hampton.id,
       ticketNumber: "HAMP-1005",
       customerName: "Chris Alvarez",
       customerPhone: "+13125550600",
@@ -456,17 +474,20 @@ async function main() {
     },
   });
 
-  const hamptonTicket6 = await prisma.ticket.upsert({
+  const existingTicket6 = await prisma.ticket.findFirst({
     where: {
-      tenantId_ticketNumber: {
-        tenantId: tenant.id,
-        ticketNumber: "HAMP-1006",
-      },
-    },
-    update: {},
-    create: {
       tenantId: tenant.id,
       locationId: hampton.id,
+      ticketNumber: "HAMP-1006",
+    },
+  });
+
+  const hamptonTicket6 = existingTicket6
+    ? existingTicket6
+    : await prisma.ticket.create({
+      data: {
+        tenantId: tenant.id,
+        locationId: hampton.id,
       ticketNumber: "HAMP-1006",
       customerName: "Taylor Grant",
       customerPhone: "+13125550700",
