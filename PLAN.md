@@ -74,7 +74,7 @@
 - **2025-11-12** — Automated welcome SMS on ticket creation, enforced in/out payment requirements, and added Twilio inbound handler to trigger outstanding balance payment links and capture return intents.
 - **2025-11-12** — Updated ticket card visuals (vehicle border indicates WITH_US/AWAY, badges for in/out privileges), adjusted Hampton/Hyatt tiered pricing logic, seeded additional Hampton scenarios, added Sonner-based toast system, and modernized edit dialog layout (sticky header/footer, scrollable body). Payments page now renders a table layout on desktop with responsive cards on mobile.
 - **2025-11-13** — Implemented refund functionality for admins and managers: added refund fields to Payment schema, created refund API endpoint with Stripe integration, updated payments page UI with refund dialog and refunded amounts display, updated reports to show refunded amounts separately, and added SMS confirmation for refunds. **NOTE: Payments and refunds need thorough testing once Twilio and Stripe are fully configured.**
-- **2025-11-24** — Messaging system fully operational: Twilio webhook configured and working, inbound messages are being received and saved correctly, Messages page displays all messages. **CRITICAL TODO: Stripe Payment Status Updates** — Payments created via Stripe payment links remain in "PENDING" status and never update to "COMPLETED". Need to implement Stripe webhook handler to listen for `checkout.session.completed` and `payment_intent.succeeded` events to automatically update payment status. This is blocking both testing (sandbox) and production. See "Payment Status Webhook" in Next Steps below.
+- **2025-11-24** — Messaging system fully operational: Twilio webhook configured and working, inbound messages are being received and saved correctly, Messages page displays all messages. **CRITICAL TODO: Stripe Payment Status Updates** — Payments created via Stripe payment links remain in "PENDING" status and never update to "COMPLETED". Need to implement Stripe webhook handler to listen for `checkout.session.completed` and `payment_intent.succeeded` events to automatically update payment status. This is blocking both testing (sandbox) and production. See "Payment Status Webhook" in Next Steps below. **HIGH PRIORITY TODO: Automated Pickup Notifications & Payment Flow** — Refined workflow: (1) Payment link sent immediately when car is dropped off, (2) Customer pays via Stripe, (3) Payment confirmation page shows "Request Car Now" button, (4) Customer receives SMS confirmation with option to reply YES, (5) When pickup requested + payment complete, ticket turns green and staff receive PWA push notification. Need to convert app to PWA with push notifications for staff devices. See "Automated Pickup Notifications & Payment Flow" in Next Steps below.
 
 ## Tracking
 - Update this plan as milestones are completed or scope changes.
@@ -98,7 +98,180 @@
      - Register webhook route in `server/index.ts`
      - Add `STRIPE_WEBHOOK_SECRET` to `env.example`
    - **Reference**: Stripe webhook docs, `docs/future-multi-tenant-state.md` has webhook routing notes
-2. **Locations Page & Pricing Configuration** (PRIORITY - Deferred)
+2. **Automated Pickup Notifications & Payment Flow** (HIGH PRIORITY - Customer & Staff Experience)
+   - **Payment Flow - Immediate Payment Prompt**:
+     - When ticket is created (car dropped off), automatically send payment link via SMS
+     - Welcome message: "Thanks for using ValetPro! To request your car, pay here: [payment link]"
+     - This replaces the current flow where payment is only requested when customer texts for pickup
+   - **Payment Confirmation Page**:
+     - After successful Stripe payment, redirect to custom confirmation page (not Stripe default)
+     - Show payment details: amount paid, ticket number, customer name
+     - Display prominent "Request Car Now" button that triggers pickup request
+     - Button should send SMS to Twilio number with pickup keywords OR call API endpoint to mark as ready
+   - **Post-Payment SMS Confirmation**:
+     - After payment webhook confirms payment, send SMS to customer:
+       - "Payment confirmed! You paid $X.XX for ticket #[number]. [If they pressed button: Your car is being prepared!] [If they didn't press button: Reply YES to request your car now.]"
+   - **Pickup Request Flow**:
+     - Customer can request pickup via:
+       - **Option A**: Press "Request Car Now" button on payment confirmation page
+       - **Option B**: Reply "YES" to the payment confirmation SMS
+       - **Option C**: Text pickup keywords ("ready", "pickup", "car", etc.) at any time
+     - When pickup is requested AND payment is complete:
+       - Update ticket status to `READY_FOR_PICKUP`
+       - Send push notification to staff (via PWA)
+       - Ticket card turns green on Tickets page
+       - Log status change in audit log
+   - **Staff Notifications - PWA Push Notifications** (iOS & macOS Compatible):
+     - Convert app to Progressive Web App (PWA) with service worker
+     - **Platform Requirements**: Must work on iPhone (iOS Safari) and MacBook (macOS Safari)
+     - **iOS PWA Considerations**:
+       - iOS 16.4+ supports Web Push API for PWAs (earlier versions don't support push notifications)
+       - PWA must be "installed" (added to home screen) for push notifications to work on iOS
+       - Service worker must be registered and active
+       - Manifest.json must include proper iOS-specific metadata
+       - Use `apple-touch-icon` for home screen icon
+       - Set `display: "standalone"` in manifest for app-like experience
+     - **macOS PWA Considerations**:
+       - macOS Safari supports PWAs natively
+       - Can be installed as standalone app from Safari menu
+       - Push notifications work via Web Push API
+       - Service worker support is full-featured
+     - **Push Notification Implementation**:
+       - Use Web Push API (supported on iOS 16.4+ and macOS Safari)
+       - For iOS < 16.4, fallback to in-app notifications or SMS (if needed)
+       - When car is ready for pickup (payment complete + pickup requested):
+         - Send push notification: "Car ready for pickup: Ticket #[number], Customer: [name], Vehicle: [make/model/color]"
+         - Notification should link directly to ticket details
+       - Staff can click notification to open app and view ticket
+     - **PWA Features**:
+       - Work offline and sync when connection restored
+       - App-like experience when installed (no browser chrome)
+       - Fast loading with service worker caching
+       - Install prompts for both iOS and macOS
+   - **UI Updates Needed**:
+     - **Tickets Page**:
+       - Tickets with `READY_FOR_PICKUP` status show green border/background
+       - Visual indicator (badge, icon) clearly showing "READY FOR PICKUP"
+       - Filter/sort option to show only "READY FOR PICKUP" tickets
+       - Real-time updates when status changes (WebSocket or polling)
+     - **Payment Confirmation Page** (new):
+       - Create `src/app/payment-confirmation/page.tsx` or similar
+       - Display payment details, ticket info, "Request Car Now" button
+       - Handle button click to trigger pickup request
+     - **Dashboard**:
+       - Widget showing count of cars ready for pickup
+       - Visual alert when new car becomes ready
+   - **Implementation Details**:
+     - **PWA Setup (iOS & macOS Compatible)**:
+       - Add `manifest.json` for PWA configuration with iOS-specific fields:
+         - `name`, `short_name`, `description`
+         - `start_url`, `display: "standalone"`
+         - `theme_color`, `background_color`
+         - `icons` array with multiple sizes (including 180x180 for iOS)
+         - `apple-touch-icon` meta tag in HTML
+         - `apple-mobile-web-app-capable` meta tag
+         - `apple-mobile-web-app-status-bar-style` meta tag
+       - Create service worker (`public/sw.js` or similar):
+         - Cache static assets for offline support
+         - Handle push notification events
+         - Sync data when connection restored
+       - Register service worker in app:
+         - Check for service worker support
+         - Register on app load
+         - Handle updates gracefully
+       - Request notification permissions:
+         - On login or first visit (with user-friendly prompt)
+         - Check if notifications are supported
+         - Handle permission denial gracefully
+         - Store notification subscription in database (User model or separate NotificationSubscription model)
+       - **iOS-Specific Setup**:
+         - Add to `app/layout.tsx` or `app/page.tsx`:
+           - `<meta name="apple-mobile-web-app-capable" content="yes">`
+           - `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
+           - `<link rel="apple-touch-icon" href="/icon-180x180.png">`
+         - Ensure manifest.json is served with correct MIME type
+         - Test on actual iOS device (simulator may not show all PWA features)
+       - **macOS-Specific Setup**:
+         - Ensure manifest.json is properly formatted
+         - Test installation via Safari menu (File > Add to Dock)
+         - Verify standalone mode works correctly
+     - **Push Notifications (iOS & macOS)**:
+       - Use Web Push API (browser native) - supported on iOS 16.4+ and macOS Safari
+       - **For iOS < 16.4**: Consider fallback options:
+         - In-app notifications (show banner when app is open)
+         - SMS notifications to staff phone numbers (if configured)
+         - Email notifications as backup
+       - Backend endpoint to send push notifications: `/api/notifications/push`
+       - When ticket status changes to READY_FOR_PICKUP, query all staff users for that location/tenant
+       - Send push notification to each staff member's subscribed device
+       - **Notification Payload**:
+         - Title: "Car Ready for Pickup"
+         - Body: "Ticket #[number] - [Customer Name] - [Vehicle]"
+         - Data: { ticketId, ticketNumber, customerName, vehicleInfo }
+         - Click action: Opens app to ticket details page
+       - **Testing Requirements**:
+         - Test on iPhone (iOS 16.4+) with PWA installed
+         - Test on MacBook (macOS Safari) with PWA installed
+         - Test notification delivery when app is closed
+         - Test notification delivery when app is open
+         - Test notification click behavior
+         - Verify offline/online sync works
+     - **Payment Confirmation Page**:
+       - Stripe redirect URL should point to: `https://yourdomain.com/payment-confirmation?session_id={CHECKOUT_SESSION_ID}`
+       - Page retrieves session details from Stripe to show payment info
+       - "Request Car Now" button calls API: `POST /api/tickets/:id/request-pickup` or sends SMS
+     - **In Stripe webhook handler** (`checkout.session.completed`):
+       - Update payment status to "COMPLETED"
+       - Check if customer pressed "Request Car Now" button (check metadata or separate API call)
+       - If pickup requested, update ticket to `READY_FOR_PICKUP` and notify staff
+       - If not requested, send SMS with "Reply YES to request car"
+     - **In inbound message handler** (`/api/messages/inbound`):
+       - When customer texts "YES" or pickup keywords:
+         - Check if payment is complete
+         - If complete, update ticket to `READY_FOR_PICKUP` and notify staff
+         - If incomplete, send payment link
+   - **Edge Cases to Handle**:
+     - Customer pays but closes confirmation page without clicking button → SMS includes "Reply YES"
+     - Customer presses button but SMS fails → Still update status (button is authoritative)
+     - Customer texts "YES" before payment completes → Send payment link, don't update status
+     - Multiple pickup requests → Only update status once, log subsequent requests
+     - Staff offline when notification sent → Notification queued, delivered when online
+   - **Files to create/modify**:
+     - `public/manifest.json` - PWA manifest (iOS & macOS compatible)
+     - `public/sw.js` - Service worker for push notifications and offline support
+     - `public/icon-180x180.png` (and other sizes) - App icons for iOS/macOS
+     - `src/app/layout.tsx` - Add iOS-specific meta tags for PWA
+     - `src/app/payment-confirmation/page.tsx` - Payment confirmation page with "Request Car Now" button
+     - `server/routes/webhooks.ts` - Stripe webhook handler with payment completion logic
+     - `server/routes/notifications.ts` - Push notification API endpoints (Web Push API)
+     - `server/routes/messages.ts` - Update inbound handler for "YES" replies
+     - `server/routes/tickets.ts` - Add `request-pickup` endpoint
+     - `src/app/(protected)/tickets/page.tsx` - Green styling for READY_FOR_PICKUP, real-time updates
+     - `src/hooks/use-notifications.ts` - Hook for managing notification subscriptions
+     - `prisma/schema.prisma` - Add NotificationSubscription model to store device subscriptions
+     - `next.config.ts` - Ensure proper headers for PWA (manifest.json MIME type, service worker scope)
+   - **Testing Scenarios**:
+     - Create ticket → Payment link sent immediately → Customer pays → Confirmation page → Press button → Status READY, staff notified
+     - Create ticket → Payment link sent → Customer pays → Close page → SMS sent → Reply YES → Status READY, staff notified
+     - Create ticket → Customer texts "ready" first → Payment link sent → Customer pays → Status READY, staff notified
+     - **iOS Testing**:
+       - Install PWA on iPhone (iOS 16.4+): Open in Safari → Share → Add to Home Screen
+       - Verify push notification received when car ready
+       - Test notification click opens app to correct ticket
+       - Test offline mode (airplane mode) → verify cached data loads
+       - Test online sync when connection restored
+     - **macOS Testing**:
+       - Install PWA on MacBook: Safari → File → Add to Dock
+       - Verify push notification received when car ready
+       - Test notification click opens app to correct ticket
+       - Test standalone mode (no browser chrome)
+       - Test offline/online sync
+     - **Cross-Platform Testing**:
+       - Staff on iPhone receives notification → verify works
+       - Staff on MacBook receives notification → verify works
+       - Multiple staff members receive notifications simultaneously
+       - Staff offline → Notification sent → Staff comes online → Notification received (both platforms)
+3. **Locations Page & Pricing Configuration** (PRIORITY - Deferred)
    - Build Locations management page for viewing and editing location settings.
    - **Pricing Model Configuration**: Allow each tenant to configure custom pricing per location:
      - Support two pricing models:

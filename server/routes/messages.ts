@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import prisma from "../lib/prisma";
 import { resolveSession } from "../lib/session";
-import { hasTwilioConfig, sendSms } from "../lib/twilio";
+import { hasTwilioConfig, isSmsSendingDisabled, sendSms } from "../lib/twilio";
 import { calculateProjectedAmountCents } from "../utils/pricing";
 import { sendPaymentLinkForTicket } from "./payments";
 
@@ -648,47 +648,79 @@ export function registerMessageRoutes(router: Router) {
       const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
 
       const isPickupRequest = REQUEST_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
+      const isYesReply = YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
+      
+      // Treat "YES" replies as pickup requests (per plan: "Reply YES to request your car now")
+      const isPickupOrYes = isPickupRequest || isYesReply;
 
       console.log("🤖 [WEBHOOK] Processing message:", {
         isPickupRequest,
+        isYesReply,
+        isPickupOrYes,
         bodyPreview: trimmedBody.slice(0, 50),
         outstandingAmountCents,
+        amountPaidCents,
+        projectedAmountCents,
         rateType: ticket.rateType,
         inOutPrivileges: ticket.inOutPrivileges,
       });
 
-      if (isPickupRequest) {
-        if (
-          ticket.rateType === "HOURLY" &&
-          amountPaidCents > 0 &&
-          outstandingAmountCents > 0 &&
-          hasTwilioConfig
-        ) {
-          console.log("💳 [WEBHOOK] Sending payment link for outstanding balance:", outstandingAmountCents);
+      if (isPickupOrYes) {
+        // Check if payment is complete first
+        const paymentComplete = outstandingAmountCents <= 0;
+
+        if (!paymentComplete && hasTwilioConfig && !isSmsSendingDisabled) {
+          // Payment not complete - send payment link
+          console.log("💳 [WEBHOOK] Payment incomplete, sending payment link. Outstanding:", outstandingAmountCents);
           await sendPaymentLinkForTicket({
             ticket,
             tenantId: ticket.tenantId,
             amountCents: outstandingAmountCents,
-            message: `Thanks ${ticket.customerName}! It looks like there's an additional balance of $${(
+            message: `Thanks ${ticket.customerName}! To request your car for ticket ${ticket.ticketNumber}, please complete your payment of $${(
               outstandingAmountCents / 100
-            ).toFixed(2)} on ticket ${ticket.ticketNumber}. Please complete the payment below so we can bring your vehicle around.`,
+            ).toFixed(2)}. Pay here:`,
             automated: true,
-            metadata: { initiatedBy: "auto_difference" },
+            metadata: { initiatedBy: "pickup_request_no_payment" },
             auditContext: {
-              requestSource: "customer_request",
+              requestSource: "customer_pickup_request",
               outstandingAmountCents,
             },
-            reason: "outstanding_balance",
+            reason: "pickup_request_payment_required",
           });
-          console.log("✅ [WEBHOOK] Payment link sent");
-        } else if (hasTwilioConfig) {
-          let acknowledgement = `Thanks ${ticket.customerName}! We've received your request for ticket ${ticket.ticketNumber}. We'll let you know as soon as your vehicle is ready.`;
-          if (ticket.inOutPrivileges) {
-            acknowledgement +=
-              " Will you be returning your car to valet later today? Reply YES if you're coming back or NO if not.";
-          }
+          console.log("✅ [WEBHOOK] Payment link sent - payment required before pickup");
+        } else if (paymentComplete && hasTwilioConfig && !isSmsSendingDisabled) {
+          // Payment complete - acknowledge and update status to READY_FOR_PICKUP
+          console.log("✅ [WEBHOOK] Payment complete, updating ticket to READY_FOR_PICKUP");
+          
+          // Update ticket status
+          await prisma.ticket.update({
+            where: { id: ticket.id },
+            data: {
+              status: "READY_FOR_PICKUP",
+            },
+          });
 
-          console.log("📤 [WEBHOOK] Sending acknowledgement message");
+          // Create audit log
+          await prisma.auditLog.create({
+            data: {
+              tenantId: ticket.tenantId,
+              ticketId: ticket.id,
+              userId: null,
+              action: "STATUS_CHANGED",
+              details: {
+                ticketNumber: ticket.ticketNumber,
+                oldStatus: ticket.status,
+                newStatus: "READY_FOR_PICKUP",
+                reason: "customer_pickup_request",
+                paymentComplete: true,
+              },
+            },
+          });
+
+          // Send acknowledgement
+          const acknowledgement = `Thanks ${ticket.customerName}! Your car is being prepared for pickup. We'll have ticket ${ticket.ticketNumber} ready shortly.`;
+
+          console.log("📤 [WEBHOOK] Sending pickup acknowledgement");
           await sendSms({
             to: ticket.customerPhone,
             body: acknowledgement,
@@ -699,9 +731,14 @@ export function registerMessageRoutes(router: Router) {
             ticketId: ticket.id,
             body: acknowledgement,
             automated: true,
-            metadata: { reason: "pickup_acknowledgement" },
+            metadata: { reason: "pickup_acknowledgement_ready" },
           });
-          console.log("✅ [WEBHOOK] Acknowledgement sent");
+          console.log("✅ [WEBHOOK] Ticket updated to READY_FOR_PICKUP, acknowledgement sent");
+          
+          // TODO: Send push notification to staff (PWA implementation pending)
+          console.log("📱 [WEBHOOK] TODO: Send push notification to staff for ticket:", ticket.ticketNumber);
+        } else if (!hasTwilioConfig || isSmsSendingDisabled) {
+          console.log("⚠️ [WEBHOOK] Twilio not configured or SMS disabled - cannot send response");
         }
       } else if (ticket.inOutPrivileges) {
         if (YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword))) {

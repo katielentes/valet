@@ -317,9 +317,24 @@ function TicketResults({
     );
   }
 
+  // Sort tickets: READY_FOR_PICKUP first, then by check-in time
+  const sortedTickets = useMemo(() => {
+    return [...tickets].sort((a, b) => {
+      // READY_FOR_PICKUP tickets always come first
+      if (a.status === "READY_FOR_PICKUP" && b.status !== "READY_FOR_PICKUP") {
+        return -1;
+      }
+      if (a.status !== "READY_FOR_PICKUP" && b.status === "READY_FOR_PICKUP") {
+        return 1;
+      }
+      // Within same status group, sort by check-in time (newest first)
+      return new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime();
+    });
+  }, [tickets]);
+
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {tickets.map((ticket) => (
+      {sortedTickets.map((ticket) => (
         <TicketCard
           key={ticket.id}
           ticket={ticket}
@@ -397,6 +412,12 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
     AWAY: "border-l-4 border-l-amber-400 shadow-sm shadow-amber-100",
   };
 
+  // Special styling for READY_FOR_PICKUP - whole card gets unique green color
+  const isReadyForPickup = ticket.status === "READY_FOR_PICKUP";
+  const readyForPickupStyles = isReadyForPickup
+    ? "bg-green-50 border-green-300 border-2 shadow-lg shadow-green-100"
+    : "";
+
   const privilegesBadge = hasInOutPrivileges ? (
     <Badge variant="secondary" className="gap-1 border-indigo-200 bg-indigo-50 text-indigo-700">
       ↔ In/Out Privileges
@@ -440,7 +461,8 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
     <Card
       className={cn(
         "flex h-full flex-col transition-shadow hover:shadow-lg",
-        vehicleBorderStyles[ticket.vehicleStatus]
+        // READY_FOR_PICKUP gets whole card colored, otherwise use vehicle status border
+        isReadyForPickup ? readyForPickupStyles : vehicleBorderStyles[ticket.vehicleStatus]
       )}
     >
       <CardHeader className="space-y-1">

@@ -6,6 +6,7 @@ import { Prisma } from "../../src/generated/prisma/client";
 import { resolveSession } from "../lib/session";
 import { calculateProjectedAmountCents } from "../utils/pricing";
 import { hasTwilioConfig, isSmsSendingDisabled, sendSms } from "../lib/twilio";
+import { hasStripeConfig } from "../lib/stripe";
 import { TicketStatus } from "../../src/generated/prisma/client";
 
 const querySchema = z.object({
@@ -258,49 +259,72 @@ export function registerTicketRoutes(router: Router) {
         },
       });
 
+      // Send payment link immediately when ticket is created (per payment flow plan)
       if (hasTwilioConfig && !isSmsSendingDisabled && ticket.customerPhone) {
-        const valetNumber = process.env.TWILIO_FROM_NUMBER ?? "this number";
-        let welcomeMessage = `Hi ${ticket.customerName}, welcome to ValetPro at ${ticket.location.name}. Text ${valetNumber} with your ticket ${ticket.ticketNumber} when you're ready for your vehicle.`;
-        if (ticket.inOutPrivileges) {
-          welcomeMessage +=
-            " Since you have in/out privileges, please let us know if you'll be returning so we can keep your spot ready.";
-        }
-
         try {
-          await sendSms({
-            to: ticket.customerPhone,
-            body: welcomeMessage,
-          });
-
-          await prisma.message.create({
-            data: {
+          const totalAmountCents = calculateProjectedAmountCents(ticket);
+          
+          if (totalAmountCents > 0 && hasStripeConfig) {
+            // Send payment link with welcome message (per payment flow plan)
+            console.log("💳 [TICKET CREATE] Sending payment link immediately for new ticket");
+            const { sendPaymentLinkForTicket } = await import("./payments");
+            
+            await sendPaymentLinkForTicket({
+              ticket,
               tenantId: session.tenantId,
-              ticketId: ticket.id,
-              direction: "OUTBOUND",
+              amountCents: totalAmountCents,
+              message: `Thanks for using ValetPro at ${ticket.location.name}! To request your car, pay here:`,
+              automated: true,
+              triggeredByUserId: session.userId ?? null,
+              metadata: { initiatedBy: "ticket_creation" },
+              reason: "initial_payment",
+            });
+            
+            console.log("✅ [TICKET CREATE] Payment link sent with welcome message");
+          } else {
+            // Fallback: just send welcome message if payment not needed or Stripe not configured
+            const valetNumber = process.env.TWILIO_FROM_NUMBER ?? "this number";
+            let welcomeMessage = `Hi ${ticket.customerName}, welcome to ValetPro at ${ticket.location.name}. Text ${valetNumber} with your ticket ${ticket.ticketNumber} when you're ready for your vehicle.`;
+            if (ticket.inOutPrivileges) {
+              welcomeMessage +=
+                " Since you have in/out privileges, please let us know if you'll be returning so we can keep your spot ready.";
+            }
+
+            await sendSms({
+              to: ticket.customerPhone,
               body: welcomeMessage,
-              deliveryStatus: "SENT",
-              metadata: {
-                automated: true,
-                reason: "welcome",
-              },
-            },
-          });
+            });
 
-          await prisma.auditLog.create({
-            data: {
-              tenantId: session.tenantId,
-              ticketId: ticket.id,
-              userId: session.userId ?? null,
-              action: "MESSAGE_SENT",
-              details: {
-                ticketNumber: ticket.ticketNumber,
-                automated: true,
-                reason: "welcome",
+            await prisma.message.create({
+              data: {
+                tenantId: session.tenantId,
+                ticketId: ticket.id,
+                direction: "OUTBOUND",
+                body: welcomeMessage,
+                deliveryStatus: "SENT",
+                metadata: {
+                  automated: true,
+                  reason: "welcome",
+                },
               },
-            },
-          });
+            });
+
+            await prisma.auditLog.create({
+              data: {
+                tenantId: session.tenantId,
+                ticketId: ticket.id,
+                userId: session.userId ?? null,
+                action: "MESSAGE_SENT",
+                details: {
+                  ticketNumber: ticket.ticketNumber,
+                  automated: true,
+                  reason: "welcome",
+                },
+              },
+            });
+          }
         } catch (error) {
-          console.error("Failed to send welcome message", error);
+          console.error("Failed to send welcome message/payment link", error);
         }
       }
 

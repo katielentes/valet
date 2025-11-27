@@ -31,6 +31,18 @@ async function bootstrap() {
 
   const server = express();
 
+  // Stripe webhook endpoint needs raw body for signature verification
+  // Must be registered before JSON middleware
+  server.post(
+    "/api/webhooks/stripe",
+    express.raw({ type: "application/json" }),
+    async (req, res) => {
+      // Import and call webhook handler
+      const { handleStripeWebhook } = await import("./routes/webhooks");
+      return handleStripeWebhook(req, res);
+    }
+  );
+
   server.use(express.json());
   server.use(express.urlencoded({ extended: true }));
 
