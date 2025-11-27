@@ -6,10 +6,45 @@
 
 For production on Vercel, you need a PostgreSQL database. Options:
 
-- **Vercel Postgres** (Recommended - easiest integration)
+- **Prisma Postgres** (Recommended - Vercel Marketplace integration, designed for serverless)
+- **Vercel Postgres** (Native Vercel integration)
 - **Neon** (Serverless PostgreSQL)
 - **Supabase** (PostgreSQL with additional features)
 - **Railway** (Simple PostgreSQL hosting)
+
+### Option A: Prisma Postgres (Recommended for Prisma Projects)
+
+**Prisma Postgres** is a Vercel Marketplace integration specifically designed for serverless applications using Prisma ORM. It's perfect for this project!
+
+#### Setup Steps:
+
+1. **Install Prisma Postgres Integration:**
+   - Go to your Vercel project dashboard
+   - Navigate to **Storage** → **Marketplace**
+   - Search for "Prisma" and click **Install** on "Prisma Postgres"
+   - Follow the installation wizard
+
+2. **Automatic Configuration:**
+   - The integration automatically sets the `DATABASE_URL` environment variable
+   - No manual connection string needed!
+
+3. **Benefits:**
+   - ✅ Zero cold starts
+   - ✅ Built-in global caching
+   - ✅ Scalable connection pooling
+   - ✅ Generous free tier
+   - ✅ Visual data management in Vercel dashboard
+   - ✅ AI-powered performance tips
+
+4. **Pricing:**
+   - Charges per operation (reads, writes, queries)
+   - Simple, predictable pricing
+   - Free tier available
+   - Learn more: [Prisma Postgres Pricing](https://vercel.com/marketplace/prisma)
+
+**Note:** Prisma Postgres requires Prisma ORM (which you're already using), so this is a perfect fit!
+
+### Option B: Other PostgreSQL Providers
 
 ### 2. Update Prisma Schema
 
@@ -22,7 +57,9 @@ datasource db {
 }
 ```
 
-### 3. Get Your Database Connection String
+**If using Prisma Postgres:** The `DATABASE_URL` is automatically set by the integration, so you don't need to manually configure it.
+
+### 3. Get Your Database Connection String (Only if NOT using Prisma Postgres)
 
 The connection string format for PostgreSQL:
 ```
@@ -38,6 +75,10 @@ postgresql://user:password@host:port/database?sslmode=require
 - Make sure it includes `?sslmode=require` for secure connections
 
 ### 4. Set Environment Variables in Vercel
+
+**If using Prisma Postgres:** Skip this step - the `DATABASE_URL` is automatically set by the integration.
+
+**If using another provider:**
 
 1. Go to your Vercel project dashboard
 2. Navigate to **Settings** → **Environment Variables**
@@ -94,7 +135,7 @@ In Vercel project settings:
 
 Make sure all these are set in Vercel:
 
-- `DATABASE_URL` - PostgreSQL connection string
+- `DATABASE_URL` - PostgreSQL connection string (automatically set if using Prisma Postgres integration)
 - `TWILIO_SID` - Your Twilio Account SID
 - `TWILIO_AUTH` - Your Twilio Auth Token
 - `TWILIO_FROM_NUMBER` - (Optional) Your Twilio phone number
