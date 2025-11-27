@@ -45,6 +45,8 @@ const formSchema = z.object({
   locationId: z.string(),
   notes: z.string().optional(),
   checkInTime: z.string(),
+  durationDays: z.number().int().positive().nullable().optional(),
+  durationHours: z.number().int().positive().nullable().optional(),
 });
 
 type EditTicketDialogProps = {
@@ -110,6 +112,8 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
           locationId: values.locationId,
           notes: values.notes ?? null,
           checkInTime: fromDateTimeInput(values.checkInTime) ?? undefined,
+          durationDays: values.durationDays ?? null,
+          durationHours: values.durationHours ?? null,
         },
       });
       toast.success(`Ticket ${ticket.ticketNumber} updated`);
@@ -329,6 +333,64 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
               />
             </div>
 
+            {form.watch("rateType") === "OVERNIGHT" && (
+              <FormField
+                control={form.control}
+                name="durationDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Duration (days) - Optional</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g., 3"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value, 10));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the number of days for prepaid overnight parking
+                    </p>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {form.watch("rateType") === "HOURLY" && (
+              <FormField
+                control={form.control}
+                name="durationHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Duration (hours) - Optional</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g., 5"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value, 10));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the number of hours for prepaid hourly parking
+                    </p>
+                  </FormItem>
+                )}
+              />
+            )}
+
             <FormField
               control={form.control}
               name="checkInTime"
@@ -412,6 +474,8 @@ function mapTicketToForm(ticket: Ticket): z.infer<typeof formSchema> {
     locationId: ticket.location.id,
     notes: ticket.notes ?? "",
     checkInTime: toDateTimeInputValue(ticket.checkInTime),
+    durationDays: ticket.durationDays,
+    durationHours: ticket.durationHours,
   };
 }
 

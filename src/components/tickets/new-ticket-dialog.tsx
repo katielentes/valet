@@ -49,6 +49,8 @@ const formSchema = z.object({
   status: z.enum(["CHECKED_IN", "READY_FOR_PICKUP"]),
   notes: z.string().optional(),
   checkInTime: z.string(),
+  durationDays: z.number().int().positive().nullable().optional(),
+  durationHours: z.number().int().positive().nullable().optional(),
 });
 
 type NewTicketDialogProps = {
@@ -91,6 +93,8 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       status: "CHECKED_IN",
       notes: "",
       checkInTime: toDateTimeInputValue(new Date()),
+      durationDays: null,
+      durationHours: null,
     },
   });
 
@@ -118,6 +122,8 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
       status: "CHECKED_IN",
       notes: "",
       checkInTime: toDateTimeInputValue(new Date()),
+      durationDays: null,
+      durationHours: null,
     });
   }, [open, currentLocation, locations, role, assignedLocationId, form]);
 
@@ -152,8 +158,10 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
         inOutPrivileges: false, // In/out privileges are now determined by location rate configuration
         status: values.status,
         vehicleStatus: "WITH_US",
-      notes: values.notes || null,
-      checkInTime: fromDateTimeInput(values.checkInTime) ?? new Date().toISOString(),
+        notes: values.notes || null,
+        checkInTime: fromDateTimeInput(values.checkInTime) ?? new Date().toISOString(),
+        durationDays: values.durationDays || null,
+        durationHours: values.durationHours || null,
       });
       setFeedback({ type: "success", message: "Ticket created." });
       onOpenChange(false);
@@ -361,6 +369,64 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                 )}
               />
             </div>
+
+            {form.watch("rateType") === "OVERNIGHT" && (
+              <FormField
+                control={form.control}
+                name="durationDays"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Duration (days) - Optional</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g., 3"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value, 10));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the number of days for prepaid overnight parking
+                    </p>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {form.watch("rateType") === "HOURLY" && (
+              <FormField
+                control={form.control}
+                name="durationHours"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Duration (hours) - Optional</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        placeholder="e.g., 5"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === "" ? null : parseInt(value, 10));
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Enter the number of hours for prepaid hourly parking
+                    </p>
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

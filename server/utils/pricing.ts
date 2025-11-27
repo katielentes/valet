@@ -9,6 +9,8 @@ type TicketForPricing = {
   inOutPrivileges: boolean;
   checkInTime: Date;
   checkOutTime: Date | null;
+  durationDays?: number | null;
+  durationHours?: number | null;
   location: {
     identifier: string;
     overnightRateCents: number;
@@ -20,10 +22,26 @@ export function calculateProjectedAmountCents(
   ticket: TicketForPricing,
   referenceDate: Date = new Date()
 ) {
-  const endTime = ticket.checkOutTime ?? referenceDate;
-  const diffMs = Math.max(endTime.getTime() - ticket.checkInTime.getTime(), 0);
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = diffHours / 24;
+  // If duration is set, use it for pricing instead of elapsed time
+  // This allows customers to prepay for their entire stay
+  let diffHours: number;
+  let diffDays: number;
+  
+  if (ticket.rateType === "OVERNIGHT" && ticket.durationDays != null && ticket.durationDays > 0) {
+    // Use prepaid duration for overnight tickets
+    diffDays = ticket.durationDays;
+    diffHours = diffDays * 24;
+  } else if (ticket.rateType === "HOURLY" && ticket.durationHours != null && ticket.durationHours > 0) {
+    // Use prepaid duration for hourly tickets
+    diffHours = ticket.durationHours;
+    diffDays = diffHours / 24;
+  } else {
+    // Fall back to elapsed time calculation
+    const endTime = ticket.checkOutTime ?? referenceDate;
+    const diffMs = Math.max(endTime.getTime() - ticket.checkInTime.getTime(), 0);
+    diffHours = diffMs / (1000 * 60 * 60);
+    diffDays = diffHours / 24;
+  }
 
   // Helper function to calculate overnight rate per day
   const calculateOvernightRate = (days: number): number => {

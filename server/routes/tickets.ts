@@ -30,6 +30,8 @@ const updateSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
   locationId: z.string().optional(),
   checkInTime: z.string().optional(),
+  durationDays: z.number().int().positive().nullable().optional(),
+  durationHours: z.number().int().positive().nullable().optional(),
 });
 
 const createSchema = z.object({
@@ -48,6 +50,8 @@ const createSchema = z.object({
   locationId: z.string(),
   notes: z.string().max(500).nullable().optional(),
   checkInTime: z.string().optional(),
+  durationDays: z.number().int().positive().nullable().optional(),
+  durationHours: z.number().int().positive().nullable().optional(),
 });
 export function registerTicketRoutes(router: Router) {
   router.get("/api/tickets", async (req, res) => {
@@ -131,6 +135,8 @@ export function registerTicketRoutes(router: Router) {
           status: ticket.status,
           vehicleStatus: ticket.vehicleStatus,
           checkInTime: ticket.checkInTime,
+          durationDays: ticket.durationDays,
+          durationHours: ticket.durationHours,
           notes: ticket.notes,
           projectedAmountCents,
           elapsedHours,
@@ -239,6 +245,8 @@ export function registerTicketRoutes(router: Router) {
           status: data.status ?? "CHECKED_IN",
           vehicleStatus: data.vehicleStatus ?? "WITH_US",
           checkInTime: data.checkInTime ? new Date(data.checkInTime) : undefined,
+          durationDays: data.durationDays ?? null,
+          durationHours: data.durationHours ?? null,
           notes: data.notes ?? null,
         },
         include: {

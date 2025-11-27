@@ -18,6 +18,8 @@ export type Ticket = {
   status: "CHECKED_IN" | "READY_FOR_PICKUP" | "COMPLETED" | "CANCELLED";
   vehicleStatus: "WITH_US" | "AWAY";
   checkInTime: string;
+  durationDays: number | null;
+  durationHours: number | null;
   projectedAmountCents: number;
   elapsedHours: number;
   amountPaidCents: number;
@@ -104,6 +106,8 @@ type UpdateTicketVariables = {
       | "inOutPrivileges"
       | "status"
       | "vehicleStatus"
+      | "durationDays"
+      | "durationHours"
     >
   > & {
     locationId?: string;
@@ -151,6 +155,8 @@ type CreateTicketVariables = {
   locationId: string;
   notes?: string | null;
   checkInTime?: string;
+  durationDays?: number | null;
+  durationHours?: number | null;
 };
 
 export function useCreateTicketMutation() {

@@ -87,6 +87,8 @@ model Ticket {
   vehicleStatus      VehicleStatus  @default(WITH_US)
   checkInTime        DateTime       @default(now())
   checkOutTime       DateTime?
+  durationDays       Int?            // For overnight tickets: prepaid duration in days
+  durationHours      Int?            // For hourly tickets: prepaid duration in hours
   amountPaidCents    Int            @default(0)
   assignedUserId     String?
   notes              String?
