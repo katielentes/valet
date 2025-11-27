@@ -37,13 +37,17 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const query = {
     locationId: searchParams.get("locationId") || undefined,
-    status: searchParams.get("status") as any,
-    vehicleStatus: searchParams.get("vehicleStatus") as any,
+    status: searchParams.get("status") || undefined,
+    vehicleStatus: searchParams.get("vehicleStatus") || undefined,
   };
 
   const parsed = querySchema.safeParse(query);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid query parameters" }, { status: 400 });
+    console.error("Ticket query validation error:", parsed.error.issues);
+    return NextResponse.json({ 
+      error: "Invalid query parameters",
+      details: parsed.error.issues 
+    }, { status: 400 });
   }
 
   const { locationId, status, vehicleStatus } = parsed.data;
@@ -178,10 +182,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
+  let body;
+  try {
+    body = await req.json();
+  } catch (error) {
+    console.error("Failed to parse request body:", error);
+    return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+  }
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid ticket data" }, { status: 400 });
+    console.error("Ticket creation validation error:", parsed.error.errors);
+    return NextResponse.json({ 
+      error: "Invalid ticket data",
+      details: parsed.error.errors 
+    }, { status: 400 });
   }
 
   const data = parsed.data;

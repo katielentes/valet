@@ -38,7 +38,11 @@ export async function PATCH(
   const parsed = updateSchema.safeParse(body);
 
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid ticket data" }, { status: 400 });
+    console.error("Ticket update validation error:", parsed.error.errors);
+    return NextResponse.json({ 
+      error: "Invalid ticket data",
+      details: parsed.error.errors 
+    }, { status: 400 });
   }
 
   const updates = parsed.data;

@@ -1,7 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/session"];
+const PUBLIC_PATHS = [
+  "/login", 
+  "/api/auth/login", 
+  "/api/auth/logout", 
+  "/api/auth/session",
+  "/api/health",
+  "/api/webhooks/stripe", // Stripe webhooks need to be public
+  "/api/messages/inbound", // Twilio webhooks need to be public
+];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -17,7 +25,10 @@ export function middleware(request: NextRequest) {
     pathname.endsWith(".css") ||
     pathname.endsWith(".js");
 
-  if (isPublic || isStaticAsset) {
+  // Allow all API routes to pass through (they handle their own auth)
+  const isApiRoute = pathname.startsWith("/api/");
+
+  if (isPublic || isStaticAsset || isApiRoute) {
     return NextResponse.next();
   }
 

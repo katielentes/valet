@@ -20,14 +20,18 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const query = {
-    status: searchParams.get("status") as any,
+    status: searchParams.get("status") || undefined,
     locationId: searchParams.get("locationId") || undefined,
     limit: searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : undefined,
   };
 
   const parsed = listPaymentsQuerySchema.safeParse(query);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid query parameters" }, { status: 400 });
+    console.error("Payment query validation error:", parsed.error.issues);
+    return NextResponse.json({ 
+      error: "Invalid query parameters",
+      details: parsed.error.issues 
+    }, { status: 400 });
   }
 
   const { status, locationId, limit } = parsed.data;

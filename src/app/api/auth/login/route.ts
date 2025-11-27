@@ -17,11 +17,21 @@ const loginSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (error) {
+      console.error("Failed to parse request body:", error);
+      return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+    }
     const parsed = loginSchema.safeParse(body);
 
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 400 });
+      console.error("Login validation error:", parsed.error.errors);
+      return NextResponse.json({ 
+        error: "Invalid email or password",
+        details: parsed.error.errors 
+      }, { status: 400 });
     }
 
     const { email, password } = parsed.data;
