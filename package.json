@@ -3,10 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "tsx watch server/index.ts",
-    "dev:next": "next dev",
+    "dev": "next dev",
     "build": "next build",
-    "start": "NODE_ENV=production node --import tsx server/index.ts",
+    "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
     "vercel-build": "prisma migrate deploy && next build"
