@@ -7,7 +7,7 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 
-import { useUpdateLocationMutation, type LocationRecord, type PricingTier } from "@/hooks/use-locations";
+import { useUpdateLocationMutation, useCreateLocationMutation, type LocationRecord, type PricingTier } from "@/hooks/use-locations";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -39,11 +39,12 @@ const pricingTierSchema = z.object({
     .number()
     .int("Rate must be a whole number")
     .min(0, "Rate cannot be negative"),
-  inOutPrivileges: z.boolean().default(false),
+  inOutPrivileges: z.boolean(),
 });
 
 const locationFormSchema = z.object({
   name: z.string().min(1, "Name is required").max(120, "Name must be 120 characters or less"),
+  identifier: z.string().min(1, "Identifier is required").max(50, "Identifier must be 50 characters or less"),
   taxRateBasisPoints: z
     .number()
     .int("Tax rate must be a whole number")
@@ -58,7 +59,7 @@ const locationFormSchema = z.object({
     .number()
     .int("Overnight rate must be a whole number")
     .min(0, "Overnight rate cannot be negative"),
-  overnightInOutPrivileges: z.boolean().default(true),
+  overnightInOutPrivileges: z.boolean(),
   pricingTiers: z.array(pricingTierSchema).optional(),
 });
 
@@ -70,12 +71,15 @@ type EditLocationDialogProps = {
 
 export function EditLocationDialog({ location, open, onOpenChange }: EditLocationDialogProps) {
   const updateLocation = useUpdateLocationMutation();
+  const createLocation = useCreateLocationMutation();
   const [feedback, setFeedback] = useState<{ type: "error"; message: string } | null>(null);
+  const isCreating = !location;
 
   const form = useForm<z.infer<typeof locationFormSchema>>({
     resolver: zodResolver(locationFormSchema),
     defaultValues: {
       name: "",
+      identifier: "",
       taxRateBasisPoints: 0,
       hotelSharePoints: 0,
       overnightRateCents: 0,
@@ -90,31 +94,37 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
   });
 
   useEffect(() => {
-    if (location && open) {
-      // Initialize pricing tiers from location or create empty array
-      const initialTiers: PricingTier[] = location.pricingTiers ?? [];
-      
-      form.reset({
-        name: location.name,
-        taxRateBasisPoints: location.taxRateBasisPoints,
-        hotelSharePoints: location.hotelSharePoints,
-        overnightRateCents: location.overnightRateCents,
-        overnightInOutPrivileges: location.overnightInOutPrivileges ?? true,
-        pricingTiers: initialTiers.length > 0 ? initialTiers : [],
-      });
+    if (open) {
+      if (location) {
+        // Initialize pricing tiers from location or create empty array
+        const initialTiers: PricingTier[] = location.pricingTiers ?? [];
+        
+        form.reset({
+          name: location.name,
+          identifier: location.identifier,
+          taxRateBasisPoints: location.taxRateBasisPoints,
+          hotelSharePoints: location.hotelSharePoints,
+          overnightRateCents: location.overnightRateCents,
+          overnightInOutPrivileges: location.overnightInOutPrivileges ?? true,
+          pricingTiers: initialTiers.length > 0 ? initialTiers : [],
+        });
+      } else {
+        // Reset to defaults for creating
+        form.reset({
+          name: "",
+          identifier: "",
+          taxRateBasisPoints: 0,
+          hotelSharePoints: 0,
+          overnightRateCents: 0,
+          overnightInOutPrivileges: true,
+          pricingTiers: [],
+        });
+      }
     }
   }, [location, open, form]);
 
-  // Reset feedback when dialog opens (separate effect to avoid React warning)
-  useEffect(() => {
-    if (open) {
-      setFeedback(null);
-    }
-  }, [open]);
 
   const onSubmit = form.handleSubmit(async (values) => {
-    if (!location) return;
-
     setFeedback(null);
     try {
       // Validate tiers are in ascending order by maxHours
@@ -153,31 +163,47 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
         }
       }
 
-      await updateLocation.mutateAsync({
-        locationId: location.id,
-        ...values,
-        pricingTiers: values.pricingTiers && values.pricingTiers.length > 0 ? values.pricingTiers : undefined,
-      });
-
-      toast.success("Location settings updated successfully");
+      if (isCreating) {
+        await createLocation.mutateAsync({
+          name: values.name,
+          identifier: values.identifier,
+          taxRateBasisPoints: values.taxRateBasisPoints,
+          hotelSharePoints: values.hotelSharePoints,
+          overnightRateCents: values.overnightRateCents,
+          overnightInOutPrivileges: values.overnightInOutPrivileges,
+          pricingTiers: values.pricingTiers && values.pricingTiers.length > 0 ? values.pricingTiers : undefined,
+        });
+        toast.success(`Location "${values.name}" created successfully`);
+      } else {
+        await updateLocation.mutateAsync({
+          locationId: location!.id,
+          name: values.name,
+          taxRateBasisPoints: values.taxRateBasisPoints,
+          hotelSharePoints: values.hotelSharePoints,
+          overnightRateCents: values.overnightRateCents,
+          overnightInOutPrivileges: values.overnightInOutPrivileges,
+          pricingTiers: values.pricingTiers && values.pricingTiers.length > 0 ? values.pricingTiers : undefined,
+        });
+        toast.success(`Location "${values.name}" updated successfully`);
+      }
       onOpenChange(false);
     } catch (error) {
       setFeedback({
         type: "error",
-        message: error instanceof Error ? error.message : "Failed to update location.",
+        message: error instanceof Error ? error.message : isCreating ? "Failed to create location." : "Failed to update location.",
       });
     }
   });
-
-  if (!location) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Edit Location Settings</DialogTitle>
+          <DialogTitle>{isCreating ? "Create New Location" : "Edit Location Settings"}</DialogTitle>
           <DialogDescription>
-            Update pricing, tax rates, and hotel revenue sharing for {location.name}.
+            {isCreating
+              ? "Create a new location with pricing, tax rates, and hotel revenue sharing settings."
+              : `Update pricing, tax rates, and hotel revenue sharing for ${location?.name}.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -203,6 +229,24 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
                   </FormItem>
                 )}
               />
+              {isCreating && (
+                <FormField
+                  control={form.control}
+                  name="identifier"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Identifier</FormLabel>
+                      <FormControl>
+                        <Input placeholder="hampton-inn" {...field} />
+                      </FormControl>
+                      <FormDescription>
+                        A unique identifier for this location (e.g., &quot;hampton-inn&quot;). Used in URLs and API calls.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <div className="space-y-4">
@@ -223,13 +267,13 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
                       Add Tier
                     </Button>
                   </div>
-                  <FormDescription className="mb-3">
-                    Define multiple pricing tiers. Tiers must be in ascending order by hours. Leave max hours empty for the final tier (overnight rate). Enable "In/Out Privileges" for tiers that allow customers to take their vehicle out and return without closing the ticket.
+                    <FormDescription className="mb-3">
+                    Define multiple pricing tiers. Tiers must be in ascending order by hours. Leave max hours empty for the final tier (overnight rate). Enable &quot;In/Out Privileges&quot; for tiers that allow customers to take their vehicle out and return without closing the ticket.
                   </FormDescription>
 
                   {fields.length === 0 ? (
                     <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                      No pricing tiers configured. Click "Add Tier" to create one.
+                      No pricing tiers configured. Click &quot;Add Tier&quot; to create one.
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -298,7 +342,7 @@ export function EditLocationDialog({ location, open, onOpenChange }: EditLocatio
                                   <div className="space-y-1 leading-none">
                                     <FormLabel>In/Out Privileges</FormLabel>
                                     <FormDescription>
-                                      Allow customers to take their vehicle out and return without closing the ticket. Staff should set tickets with this rate to "Overnight" rate type.
+                                      Allow customers to take their vehicle out and return without closing the ticket. Staff should set tickets with this rate to &quot;Overnight&quot; rate type.
                                     </FormDescription>
                                   </div>
                                 </FormItem>

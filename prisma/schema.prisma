@@ -104,7 +104,6 @@ model Ticket {
   auditLogs     AuditLog[]
   comments      TicketComment[]
 
-  @@unique([tenantId, ticketNumber])
 }
 
 model Message {

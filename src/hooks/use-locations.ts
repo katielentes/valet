@@ -47,6 +47,40 @@ type UpdateLocationResponse = {
   location: LocationRecord;
 };
 
+type CreateLocationVariables = {
+  name: string;
+  identifier: string;
+  taxRateBasisPoints?: number;
+  hotelSharePoints?: number;
+  overnightRateCents?: number;
+  overnightInOutPrivileges?: boolean;
+  pricingTiers?: PricingTier[];
+};
+
+export function useCreateLocationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<UpdateLocationResponse, Error, CreateLocationVariables>({
+    mutationFn: async (variables) => {
+      const response = await fetch("/api/locations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(variables),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Failed to create location");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["locations"] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] }); // Pricing may affect tickets
+      queryClient.invalidateQueries({ queryKey: ["reports"] }); // Pricing affects reports
+    },
+  });
+}
+
 export function useUpdateLocationMutation() {
   const queryClient = useQueryClient();
   return useMutation<UpdateLocationResponse, Error, UpdateLocationVariables>({

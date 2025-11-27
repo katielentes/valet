@@ -677,7 +677,12 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
           </Button>
         </div>
         <CardDescription className="flex items-center justify-between gap-2 text-sm">
-          <span>{ticket.customerName}</span>
+          <div className="flex items-center gap-2">
+            <span>{ticket.customerName}</span>
+            <span className="text-[10px] font-mono text-muted-foreground/60">
+              ID: {ticket.id.slice(-8)}
+            </span>
+          </div>
           <Badge variant="outline" className="capitalize gap-1">
             <Building className="size-3" />
             {ticket.location.name.toLowerCase()}

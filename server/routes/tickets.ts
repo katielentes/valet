@@ -217,15 +217,21 @@ export function registerTicketRoutes(router: Router) {
         return;
       }
 
+      // Check for active tickets with the same number at the same location
+      // Active tickets are those that are not COMPLETED or CANCELLED
       const duplicateNumber = await prisma.ticket.findFirst({
         where: {
           tenantId: session.tenantId,
+          locationId: locationIdToUse,
           ticketNumber: data.ticketNumber,
+          status: {
+            notIn: ["COMPLETED", "CANCELLED"],
+          },
         },
       });
 
       if (duplicateNumber) {
-        res.status(400).json({ error: "Ticket number already exists" });
+        res.status(400).json({ error: `Ticket number ${data.ticketNumber} is already in use at this location` });
         return;
       }
 

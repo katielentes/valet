@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, Edit, Loader2, DollarSign, Percent, Clock } from "lucide-react";
+import { Building2, Edit, Loader2, DollarSign, Percent, Clock, Plus } from "lucide-react";
 
 import { useAppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,15 @@ export default function LocationsPage() {
             Manage location settings, pricing, tax rates, and hotel revenue sharing.
           </p>
         </div>
+        {canEdit && (
+          <Button onClick={() => {
+            setLocationForEdit(null);
+            setEditDialogOpen(true);
+          }}>
+            <Plus className="mr-2 size-4" />
+            Create Location
+          </Button>
+        )}
       </div>
 
       {!canEdit && (
