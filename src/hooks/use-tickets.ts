@@ -20,6 +20,7 @@ export type Ticket = {
   checkInTime: string;
   durationDays: number | null;
   durationHours: number | null;
+  willReturn: boolean | null;
   projectedAmountCents: number;
   elapsedHours: number;
   amountPaidCents: number;
@@ -86,7 +87,9 @@ export function useTicketsQuery(filters: TicketFilters) {
   return useQuery<TicketsResponse>({
     queryKey,
     queryFn: () => fetchTickets(filters),
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 10, // Consider data stale after 10 seconds
+    refetchInterval: 1000 * 15, // Refetch every 15 seconds for real-time updates
+    refetchIntervalInBackground: true, // Continue refetching even when tab is in background
   });
 }
 

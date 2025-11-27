@@ -272,7 +272,25 @@ export function NewTicketDialog({ open, onOpenChange }: NewTicketDialogProps) {
                   <FormItem>
                     <FormLabel>Customer phone</FormLabel>
                     <FormControl>
-                      <Input placeholder="+13125550100" {...field} />
+                      <Input
+                        placeholder="3125550100"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, ""); // Remove non-digits
+                          // Auto-prefix with "1" if it doesn't start with "1" and has digits
+                          if (value.length > 0 && !value.startsWith("1")) {
+                            value = "1" + value;
+                          }
+                          // Format as +1XXXXXXXXXX (max 11 digits: 1 + 10)
+                          if (value.length > 11) {
+                            value = value.slice(0, 11);
+                          }
+                          // Format with + prefix
+                          const formatted = value.length > 0 ? `+${value}` : "";
+                          field.onChange(formatted);
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

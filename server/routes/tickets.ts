@@ -137,6 +137,7 @@ export function registerTicketRoutes(router: Router) {
           checkInTime: ticket.checkInTime,
           durationDays: ticket.durationDays,
           durationHours: ticket.durationHours,
+          willReturn: ticket.willReturn,
           notes: ticket.notes,
           projectedAmountCents,
           elapsedHours,
@@ -453,6 +454,12 @@ export function registerTicketRoutes(router: Router) {
           error: "Outstanding balances must be paid before the vehicle can leave.",
         });
         return;
+      }
+
+      // If vehicle is being marked as AWAY and ticket is READY_FOR_PICKUP, change status back to CHECKED_IN
+      if (vehicleStatusChangingToAway && existingTicket.status === "READY_FOR_PICKUP") {
+        updates.status = "CHECKED_IN";
+        console.log(`🔄 [TICKET UPDATE] Ticket ${existingTicket.ticketNumber} status changed from READY_FOR_PICKUP to CHECKED_IN because vehicle is now AWAY`);
       }
 
       // Convert checkInTime string to Date if provided

@@ -13,8 +13,44 @@ const sendSchema = z.object({
 });
 
 const REQUEST_KEYWORDS = ["ready", "pickup", "pick up", "car", "retrieve", "bring"];
-const YES_KEYWORDS = ["yes", "y", "yeah", "yep", "return", "returning", "back"];
+const YES_KEYWORDS = ["yes", "y", "yeah", "yep"];
 const NO_KEYWORDS = ["no", "n", "nope", "not", "never"];
+const RETURN_YES_KEYWORDS = ["yes", "y", "yeah", "yep", "return", "returning", "back", "coming back", "will return"];
+const RETURN_NO_KEYWORDS = ["no", "n", "nope", "not", "never", "not returning", "won't return", "not coming back"];
+
+// Helper function to determine if a ticket has in/out privileges based on location settings
+function hasInOutPrivileges(ticket: {
+  rateType: "HOURLY" | "OVERNIGHT";
+  inOutPrivileges: boolean;
+  location: {
+    overnightInOutPrivileges: boolean;
+    pricingTiers?: unknown;
+  };
+}): boolean {
+  // Cast pricingTiers to the expected type
+  const pricingTiers = ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null | undefined;
+  
+  if (ticket.rateType === "OVERNIGHT") {
+    // For overnight, check the location's overnightInOutPrivileges setting
+    if (ticket.location.overnightInOutPrivileges) {
+      return true;
+    }
+    // Fallback to checking final tier if overnightInOutPrivileges is not set
+    if (pricingTiers && pricingTiers.length > 0) {
+      const finalTier = pricingTiers.find((tier) => tier.maxHours === null);
+      return finalTier?.inOutPrivileges === true;
+    }
+    return false;
+  } else {
+    // For hourly, check if any hourly tier (maxHours !== null) has inOutPrivileges
+    if (!pricingTiers || pricingTiers.length === 0) {
+      return false; // No tiers configured, no in/out privileges
+    }
+    return pricingTiers.some(
+      (tier) => tier.maxHours !== null && tier.inOutPrivileges === true
+    );
+  }
+}
 
 function normalizePhoneNumber(phone: string | null | undefined): string {
   if (!phone) return "";
@@ -644,18 +680,58 @@ export function registerMessageRoutes(router: Router) {
         .filter((payment) => payment.status === "COMPLETED")
         .reduce((sum, payment) => sum + payment.amountCents, 0);
 
-      const projectedAmountCents = calculateProjectedAmountCents(ticket);
+      // Cast ticket for pricing calculation
+      const ticketForPricing = {
+        rateType: ticket.rateType,
+        inOutPrivileges: ticket.inOutPrivileges,
+        checkInTime: ticket.checkInTime,
+        checkOutTime: ticket.checkOutTime,
+        durationDays: ticket.durationDays,
+        durationHours: ticket.durationHours,
+        location: {
+          identifier: ticket.location.identifier,
+          overnightRateCents: ticket.location.overnightRateCents,
+          pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+        },
+      };
+      const projectedAmountCents = calculateProjectedAmountCents(ticketForPricing);
       const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
 
       const isPickupRequest = REQUEST_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
       const isYesReply = YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
+      const isNoReply = NO_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
       
-      // Treat "YES" replies as pickup requests (per plan: "Reply YES to request your car now")
-      const isPickupOrYes = isPickupRequest || isYesReply;
+      // Check if this is a response to the return question (ticket is READY_FOR_PICKUP and waiting for return confirmation)
+      const ticketHasInOut = hasInOutPrivileges({
+        rateType: ticket.rateType,
+        inOutPrivileges: ticket.inOutPrivileges,
+        location: {
+          overnightInOutPrivileges: ticket.location.overnightInOutPrivileges,
+          pricingTiers: ticket.location.pricingTiers,
+        },
+      });
+      
+      // Fetch ticket with willReturn field to check if we're waiting for return confirmation
+      const ticketWithReturn = await prisma.ticket.findUnique({
+        where: { id: ticket.id },
+      });
+      
+      // Check if ticket is READY_FOR_PICKUP and waiting for return confirmation
+      const isReturnConfirmation = ticket.status === "READY_FOR_PICKUP" && 
+                                   ticketHasInOut && 
+                                   ticketWithReturn && 
+                                   ticketWithReturn.willReturn === null && 
+                                   (RETURN_YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword)) || 
+                                    RETURN_NO_KEYWORDS.some((keyword) => normalizedBody.includes(keyword)));
+      
+      // Treat "YES" replies as pickup requests (unless it's a return confirmation)
+      const isPickupOrYes = isPickupRequest || (isYesReply && !isReturnConfirmation);
 
       console.log("🤖 [WEBHOOK] Processing message:", {
         isPickupRequest,
         isYesReply,
+        isNoReply,
+        isReturnConfirmation,
         isPickupOrYes,
         bodyPreview: trimmedBody.slice(0, 50),
         outstandingAmountCents,
@@ -663,9 +739,59 @@ export function registerMessageRoutes(router: Router) {
         projectedAmountCents,
         rateType: ticket.rateType,
         inOutPrivileges: ticket.inOutPrivileges,
+        willReturn: ticketWithReturn?.willReturn,
       });
 
-      if (isPickupOrYes) {
+      // Handle return confirmation (ticket is already READY_FOR_PICKUP)
+      if (isReturnConfirmation) {
+        // Customer is answering the return question after pickup request
+        const willReturn = RETURN_YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword));
+        console.log(`✅ [WEBHOOK] Customer ${willReturn ? "WILL" : "WILL NOT"} return vehicle`);
+        
+        // Update ticket with return status (status is already READY_FOR_PICKUP)
+        await prisma.ticket.update({
+          where: { id: ticket.id },
+          data: {
+            willReturn,
+          },
+        });
+
+        // Create audit log
+        await prisma.auditLog.create({
+          data: {
+            tenantId: ticket.tenantId,
+            ticketId: ticket.id,
+            userId: null,
+            action: "MESSAGE_SENT",
+            details: {
+              direction: "INBOUND",
+              message: willReturn ? "Customer plans to return vehicle." : "Customer does not plan to return vehicle.",
+              willReturn,
+            },
+          },
+        });
+
+        // Send confirmation
+        if (hasTwilioConfig && !isSmsSendingDisabled) {
+          const confirmation = willReturn 
+            ? `Got it! We'll keep your spot ready for your return.`
+            : `Thanks for letting us know!`;
+          
+          await sendSms({
+            to: ticket.customerPhone,
+            body: confirmation,
+          });
+
+          await recordOutboundMessage({
+            tenantId: ticket.tenantId,
+            ticketId: ticket.id,
+            body: confirmation,
+            automated: true,
+            metadata: { reason: "return_confirmation_acknowledgement", willReturn },
+          });
+          console.log("✅ [WEBHOOK] Return confirmation acknowledged");
+        }
+      } else if (isPickupOrYes) {
         // Check if payment is complete first
         const paymentComplete = outstandingAmountCents <= 0;
 
@@ -689,7 +815,7 @@ export function registerMessageRoutes(router: Router) {
           });
           console.log("✅ [WEBHOOK] Payment link sent - payment required before pickup");
         } else if (paymentComplete && hasTwilioConfig && !isSmsSendingDisabled) {
-          // Payment complete - acknowledge and update status to READY_FOR_PICKUP
+          // Payment complete - proceed with pickup immediately
           console.log("✅ [WEBHOOK] Payment complete, updating ticket to READY_FOR_PICKUP");
           
           // Update ticket status
@@ -713,6 +839,7 @@ export function registerMessageRoutes(router: Router) {
                 newStatus: "READY_FOR_PICKUP",
                 reason: "customer_pickup_request",
                 paymentComplete: true,
+                willReturn: ticket.willReturn,
               },
             },
           });
@@ -735,40 +862,45 @@ export function registerMessageRoutes(router: Router) {
           });
           console.log("✅ [WEBHOOK] Ticket updated to READY_FOR_PICKUP, acknowledgement sent");
           
+          // Check if customer has in/out privileges and needs to confirm return
+          const ticketHasInOut = hasInOutPrivileges({
+            rateType: ticket.rateType,
+            inOutPrivileges: ticket.inOutPrivileges,
+            location: {
+              overnightInOutPrivileges: ticket.location.overnightInOutPrivileges,
+              pricingTiers: ticket.location.pricingTiers,
+            },
+          });
+          
+          // Fetch ticket with willReturn field
+          const ticketWithReturn = await prisma.ticket.findUnique({
+            where: { id: ticket.id },
+          });
+          
+          // Ask about return AFTER marking as ready and sending acknowledgement
+          if (ticketHasInOut && ticketWithReturn && ticketWithReturn.willReturn === null) {
+            console.log("🔄 [WEBHOOK] Customer has in/out privileges, asking about return after pickup request");
+            const returnQuestion = `Will you be returning with your car today? Reply RETURN if returning, or NOT RETURNING if not.`;
+            
+            await sendSms({
+              to: ticket.customerPhone,
+              body: returnQuestion,
+            });
+
+            await recordOutboundMessage({
+              tenantId: ticket.tenantId,
+              ticketId: ticket.id,
+              body: returnQuestion,
+              automated: true,
+              metadata: { reason: "return_confirmation_question_after_pickup" },
+            });
+            console.log("✅ [WEBHOOK] Return confirmation question sent after pickup request");
+          }
+          
           // TODO: Send push notification to staff (PWA implementation pending)
           console.log("📱 [WEBHOOK] TODO: Send push notification to staff for ticket:", ticket.ticketNumber);
         } else if (!hasTwilioConfig || isSmsSendingDisabled) {
           console.log("⚠️ [WEBHOOK] Twilio not configured or SMS disabled - cannot send response");
-        }
-      } else if (ticket.inOutPrivileges) {
-        if (YES_KEYWORDS.some((keyword) => normalizedBody.includes(keyword))) {
-          console.log("✅ [WEBHOOK] Customer indicated they will return vehicle");
-          await prisma.auditLog.create({
-            data: {
-              tenantId: ticket.tenantId,
-              ticketId: ticket.id,
-              userId: null,
-              action: "MESSAGE_SENT",
-              details: {
-                direction: "INBOUND",
-                message: "Customer plans to return vehicle.",
-              },
-            },
-          });
-        } else if (NO_KEYWORDS.some((keyword) => normalizedBody.includes(keyword))) {
-          console.log("❌ [WEBHOOK] Customer indicated they will NOT return vehicle");
-          await prisma.auditLog.create({
-            data: {
-              tenantId: ticket.tenantId,
-              ticketId: ticket.id,
-              userId: null,
-              action: "MESSAGE_SENT",
-              details: {
-                direction: "INBOUND",
-                message: "Customer does not plan to return vehicle.",
-              },
-            },
-          });
         }
       }
 
@@ -786,4 +918,5 @@ export function registerMessageRoutes(router: Router) {
     }
   });
 }
+
 

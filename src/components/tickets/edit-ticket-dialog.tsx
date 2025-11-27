@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,9 +53,11 @@ type EditTicketDialogProps = {
   ticket: Ticket | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDelete?: (ticket: Ticket) => void;
+  canDelete?: boolean;
 };
 
-export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialogProps) {
+export function EditTicketDialog({ ticket, open, onOpenChange, onDelete, canDelete }: EditTicketDialogProps) {
   const updateTicket = useUpdateTicketMutation();
   const { locations, locationsLoading, role } = useAppShell();
   const [feedback, setFeedback] = useState<{ type: "error"; message: string } | null>(null);
@@ -137,10 +139,28 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="flex max-h-[min(90vh,720px)] max-w-3xl flex-col overflow-hidden p-0 sm:p-0">
         <div className="sticky top-0 z-10 border-b bg-card/95 px-6 pb-4 pt-5 backdrop-blur">
-          <DialogTitle className="text-lg font-semibold">Edit ticket</DialogTitle>
-          <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
-            Update ticket details. Changes are logged to the audit trail.
-          </DialogDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <DialogTitle className="text-lg font-semibold">Edit ticket</DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm text-muted-foreground">
+                Update ticket details. Changes are logged to the audit trail.
+              </DialogDescription>
+            </div>
+            {canDelete && ticket && onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  onDelete(ticket);
+                  onOpenChange(false);
+                }}
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                aria-label="Delete ticket"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         <Form {...form}>
@@ -169,7 +189,25 @@ export function EditTicketDialog({ ticket, open, onOpenChange }: EditTicketDialo
                   <FormItem>
                     <FormLabel>Customer phone</FormLabel>
                     <FormControl>
-                      <Input placeholder="+13125550100" {...field} />
+                      <Input
+                        placeholder="3125550100"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => {
+                          let value = e.target.value.replace(/\D/g, ""); // Remove non-digits
+                          // Auto-prefix with "1" if it doesn't start with "1" and has digits
+                          if (value.length > 0 && !value.startsWith("1")) {
+                            value = "1" + value;
+                          }
+                          // Format as +1XXXXXXXXXX (max 11 digits: 1 + 10)
+                          if (value.length > 11) {
+                            value = value.slice(0, 11);
+                          }
+                          // Format with + prefix
+                          const formatted = value.length > 0 ? `+${value}` : "";
+                          field.onChange(formatted);
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

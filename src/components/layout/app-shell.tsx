@@ -49,6 +49,8 @@ type AppShellContextValue = {
   locationsLoading: boolean;
   role: string;
   assignedLocationId: string | null;
+  searchQuery: string;
+  setSearchQuery: (value: string) => void;
 };
 
 const AppShellContext = createContext<AppShellContextValue | undefined>(undefined);
@@ -68,6 +70,7 @@ export function AppShell({ session, children }: AppShellProps) {
   const [locationState, setLocationState] = useState(
     userRole === "STAFF" ? assignedLocationId ?? "all" : "all"
   );
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: locationsData, isLoading: locationsLoading } = useLocations();
   const rawLocations = useMemo(() => {
@@ -118,14 +121,12 @@ export function AppShell({ session, children }: AppShellProps) {
         locationsLoading,
         role: userRole,
         assignedLocationId,
+        searchQuery,
+        setSearchQuery,
       }}
     >
       <div className="flex min-h-screen w-full bg-muted/40">
-        <DesktopSidebar
-          session={session}
-          location={effectiveLocation}
-          onLocationChange={handleLocationChange}
-        />
+        <DesktopSidebar session={session} />
         <div className="flex min-h-screen flex-1 flex-col">
           <Topbar
             session={session}
@@ -166,22 +167,10 @@ function LocationSelect({ value, onChange, className, disabled, options }: Locat
 
 type SidebarProps = {
   session: SessionPayload;
-  location: string;
-  onLocationChange: (value: string) => void;
 };
 
-function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
+function DesktopSidebar({ session }: SidebarProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
-  const locationOptions = useMemo(() => {
-    const mapped = locations.map((loc) => ({ value: loc.id, label: loc.name }));
-    if (role === "STAFF") {
-      return mapped;
-    }
-    return [{ value: "all", label: "All Locations" }, ...mapped];
-  }, [locations, role]);
-  const assignedLocationName =
-    assignedLocationId && locations.find((loc) => loc.id === assignedLocationId)?.name;
 
   return (
     <aside className="hidden w-[260px] flex-col border-r bg-white/70 p-4 lg:flex lg:w-[280px]">
@@ -195,28 +184,6 @@ function DesktopSidebar({ session, location, onLocationChange }: SidebarProps) {
         </Badge>
       </div>
 
-      <Card className="mt-4 border-dashed">
-        <CardHeader className="space-y-2">
-          <CardTitle className="text-base font-semibold">Locations</CardTitle>
-          <CardDescription className="text-xs text-muted-foreground">
-            Filter dashboards by valet location to focus your team.
-          </CardDescription>
-          {role === "STAFF" ? (
-            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {assignedLocationName ?? "Location not assigned"}
-              </span>
-            </div>
-          ) : (
-            <LocationSelect
-              value={location}
-              onChange={onLocationChange}
-              options={locationOptions}
-              disabled={locationsLoading || role === "STAFF"}
-            />
-          )}
-        </CardHeader>
-      </Card>
 
       <nav className="mt-6 flex flex-1 flex-col gap-6">
         <SidebarSection title="Operations" items={NAV_ITEMS} pathname={pathname} />
@@ -292,7 +259,7 @@ type TopbarProps = {
 
 function Topbar({ session, location, onLocationChange }: TopbarProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
+  const { locations, locationsLoading, role, assignedLocationId, searchQuery, setSearchQuery } = useAppShell();
   const activeItem = useMemo(
     () => NAV_ITEMS.find((item) => pathname?.startsWith(item.href)) ?? NAV_ITEMS[0],
     [pathname]
@@ -313,11 +280,7 @@ function Topbar({ session, location, onLocationChange }: TopbarProps) {
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white/70 px-4 backdrop-blur-md sm:px-6">
       <div className="flex items-center gap-3">
-        <MobileSidebarTrigger
-          session={session}
-          location={location}
-          onLocationChange={onLocationChange}
-        />
+        <MobileSidebarTrigger session={session} />
         <div className="flex flex-col">
           <span className="text-sm font-medium text-muted-foreground">Current view</span>
           <span className="text-base font-semibold">{activeItem.label}</span>
@@ -330,6 +293,8 @@ function Topbar({ session, location, onLocationChange }: TopbarProps) {
             placeholder="Search tickets, customers, plates..."
             className="w-64"
             aria-label="Search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
           />
           {role === "STAFF" ? (
             <Badge variant="outline" className="hidden lg:flex lg:w-auto bg-muted/50 text-muted-foreground">
@@ -358,25 +323,12 @@ function Topbar({ session, location, onLocationChange }: TopbarProps) {
   );
 }
 
-type MobileSidebarTriggerProps = SidebarProps;
+type MobileSidebarTriggerProps = {
+  session: SessionPayload;
+};
 
-function MobileSidebarTrigger({
-  session,
-  location,
-  onLocationChange,
-}: MobileSidebarTriggerProps) {
+function MobileSidebarTrigger({ session }: MobileSidebarTriggerProps) {
   const pathname = usePathname();
-  const { locations, locationsLoading, role, assignedLocationId } = useAppShell();
-  const locationOptions = useMemo(
-    () => {
-      const mapped = locations.map((loc) => ({ value: loc.id, label: loc.name }));
-      if (role === "STAFF") return mapped;
-      return [{ value: "all", label: "All Locations" }, ...mapped];
-    },
-    [locations, role]
-  );
-  const assignedLocationName =
-    assignedLocationId && locations.find((loc) => loc.id === assignedLocationId)?.name;
 
   return (
     <Sheet>
@@ -393,25 +345,6 @@ function MobileSidebarTrigger({
           </SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-4">
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">Locations</p>
-            {role === "STAFF" ? (
-              <div className="mt-2 rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  {assignedLocationName ?? "Location not assigned"}
-                </span>
-              </div>
-            ) : (
-              <LocationSelect
-                value={location}
-                onChange={onLocationChange}
-                className="mt-2"
-                options={locationOptions}
-                disabled={locationsLoading || role === "STAFF"}
-              />
-            )}
-          </div>
-          <Separator />
           <div className="space-y-1">
             {NAV_ITEMS.map((item) => {
               const isActive = pathname ? pathname.startsWith(item.href) : false;

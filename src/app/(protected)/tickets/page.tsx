@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Loader2,
   RefreshCcw,
@@ -9,7 +10,21 @@ import {
   Send,
   CarFront,
   MoreHorizontal,
-  Trash2,
+  Moon,
+  Clock,
+  ArrowLeftRight,
+  Lock,
+  CheckCircle,
+  Package,
+  CircleCheckBig,
+  XCircle,
+  Home,
+  Navigation,
+  AlertCircle,
+  Building,
+  DollarSign,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -33,7 +48,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -65,7 +79,35 @@ const FILTERS = [
 ];
 
 export default function TicketsPage() {
-  const { location, role } = useAppShell();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { location: appShellLocation, setLocation, role, searchQuery } = useAppShell();
+  
+  // Get location from URL params on initial load, or fall back to app shell location
+  const locationFromUrl = searchParams.get("location");
+  const location = locationFromUrl ?? appShellLocation;
+  
+  // Initialize location from URL on mount and sync to app shell
+  useEffect(() => {
+    if (locationFromUrl && locationFromUrl !== appShellLocation) {
+      setLocation(locationFromUrl);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- Only run on mount
+  
+  // Sync location to URL when app shell location changes (from dropdown)
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (appShellLocation === "all" || !appShellLocation) {
+      params.delete("location");
+    } else {
+      params.set("location", appShellLocation);
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname;
+    if (window.location.search !== (params.toString() ? `?${params.toString()}` : "")) {
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [appShellLocation, router, searchParams]);
+  
   const [activeFilter, setActiveFilter] = useState(FILTERS[0]);
 
   const filters: TicketFilters = useMemo(() => {
@@ -77,6 +119,27 @@ export default function TicketsPage() {
   }, [activeFilter, location]);
 
   const { data, isLoading, error, refetch, isFetching } = useTicketsQuery(filters);
+  
+  // Filter tickets client-side based on search query
+  const filteredTickets = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return data?.tickets ?? [];
+    }
+    
+    const query = searchQuery.toLowerCase().trim();
+    return (data?.tickets ?? []).filter((ticket) => {
+      return (
+        ticket.ticketNumber.toLowerCase().includes(query) ||
+        ticket.customerName.toLowerCase().includes(query) ||
+        ticket.customerPhone.toLowerCase().includes(query) ||
+        (ticket.licensePlate?.toLowerCase().includes(query) ?? false) ||
+        ticket.vehicleMake.toLowerCase().includes(query) ||
+        ticket.vehicleModel.toLowerCase().includes(query) ||
+        (ticket.vehicleColor?.toLowerCase().includes(query) ?? false)
+      );
+    });
+  }, [data?.tickets, searchQuery]);
+  
   const [ticketForMessage, setTicketForMessage] = useState<Ticket | null>(null);
   const [ticketForPayment, setTicketForPayment] = useState<Ticket | null>(null);
   const [ticketForEdit, setTicketForEdit] = useState<Ticket | null>(null);
@@ -164,6 +227,8 @@ export default function TicketsPage() {
             setTicketForEdit(null);
           }
         }}
+        onDelete={setTicketForDelete}
+        canDelete={role === "ADMIN" || role === "MANAGER"}
       />
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -193,7 +258,9 @@ export default function TicketsPage() {
         </div>
       </div>
 
-      <MetricsSummary loading={isLoading} metrics={data?.metrics} />
+      <div className="hidden md:block">
+        <MetricsSummary loading={isLoading} metrics={data?.metrics} />
+      </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button
@@ -263,14 +330,12 @@ export default function TicketsPage() {
 
       <TicketResults
         loading={isLoading}
-        tickets={data?.tickets ?? []}
+        tickets={filteredTickets}
         onNotify={handleOpenSendDialog}
         onEdit={handleOpenEditDialog}
         onPayment={handleOpenPaymentDialog}
-        onDelete={setTicketForDelete}
         onUpdate={handleTicketUpdate}
         updatingTicketId={updatingTicketId}
-        canDelete={role === "ADMIN" || role === "MANAGER"}
       />
     </div>
   );
@@ -338,10 +403,8 @@ type TicketResultsProps = {
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
   onPayment: (ticket: Ticket) => void;
-  onDelete: (ticket: Ticket) => void;
   onUpdate: (ticketId: string, data: UpdateTicketData) => Promise<void>;
   updatingTicketId: string | null;
-  canDelete: boolean;
 };
 
 function TicketResults({
@@ -350,11 +413,25 @@ function TicketResults({
   onNotify,
   onEdit,
   onPayment,
-  onDelete,
   onUpdate,
   updatingTicketId,
-  canDelete,
 }: TicketResultsProps) {
+  // Sort tickets: READY_FOR_PICKUP first, then by check-in time
+  // Must be called before any early returns (React Hooks rule)
+  const sortedTickets = useMemo(() => {
+    return [...tickets].sort((a, b) => {
+      // READY_FOR_PICKUP tickets always come first
+      if (a.status === "READY_FOR_PICKUP" && b.status !== "READY_FOR_PICKUP") {
+        return -1;
+      }
+      if (a.status !== "READY_FOR_PICKUP" && b.status === "READY_FOR_PICKUP") {
+        return 1;
+      }
+      // Within same status group, sort by check-in time (newest first)
+      return new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime();
+    });
+  }, [tickets]);
+
   if (loading) {
     return (
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -384,21 +461,6 @@ function TicketResults({
     );
   }
 
-  // Sort tickets: READY_FOR_PICKUP first, then by check-in time
-  const sortedTickets = useMemo(() => {
-    return [...tickets].sort((a, b) => {
-      // READY_FOR_PICKUP tickets always come first
-      if (a.status === "READY_FOR_PICKUP" && b.status !== "READY_FOR_PICKUP") {
-        return -1;
-      }
-      if (a.status !== "READY_FOR_PICKUP" && b.status === "READY_FOR_PICKUP") {
-        return 1;
-      }
-      // Within same status group, sort by check-in time (newest first)
-      return new Date(b.checkInTime).getTime() - new Date(a.checkInTime).getTime();
-    });
-  }, [tickets]);
-
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {sortedTickets.map((ticket) => (
@@ -408,10 +470,8 @@ function TicketResults({
           onNotify={onNotify}
           onEdit={onEdit}
           onPayment={onPayment}
-          onDelete={onDelete}
           onUpdate={onUpdate}
           isUpdating={updatingTicketId === ticket.id}
-          canDelete={canDelete}
         />
       ))}
     </div>
@@ -423,13 +483,11 @@ type TicketCardProps = {
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
   onPayment: (ticket: Ticket) => void;
-  onDelete: (ticket: Ticket) => void;
   onUpdate: TicketResultsProps["onUpdate"];
   isUpdating: boolean;
-  canDelete: boolean;
 };
 
-function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, isUpdating, canDelete }: TicketCardProps) {
+function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating }: TicketCardProps) {
   const projectedAmount = `$${(ticket.projectedAmountCents / 100).toFixed(2)}`;
   const outstandingAmount = ticket.outstandingAmountCents / 100;
   const amountPaid = ticket.amountPaidCents / 100;
@@ -471,11 +529,13 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
   const rateBadge =
     ticket.rateType === "OVERNIGHT" ? (
       <Badge variant="secondary" className="gap-1">
-        🌙 Overnight
+        <Moon className="size-3" />
+        Overnight
       </Badge>
     ) : (
       <Badge variant="outline" className="gap-1">
-        ⏱️ Hourly
+        <Clock className="size-3" />
+        Hourly
       </Badge>
     );
   const vehicleBorderStyles: Record<Ticket["vehicleStatus"], string> = {
@@ -489,41 +549,69 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
     ? "bg-green-50 border-green-300 border-2 shadow-lg shadow-green-100"
     : "";
 
+  // Special styling for paid tickets that aren't ready yet - unique blue background
+  const isPaidButNotReady = paymentComplete && !isReadyForPickup && ticket.status !== "COMPLETED" && ticket.status !== "CANCELLED";
+  const paidButNotReadyStyles = isPaidButNotReady
+    ? "bg-blue-50 shadow-md shadow-blue-100"
+    : "";
+
   const privilegesBadge = hasInOutPrivileges ? (
     <Badge variant="secondary" className="gap-1 border-indigo-200 bg-indigo-50 text-indigo-700">
-      ↔ In/Out Privileges
+      <ArrowLeftRight className="size-3" />
+      In/Out Privileges
     </Badge>
   ) : (
     <Badge variant="outline" className="gap-1 text-muted-foreground">
+      <Lock className="size-3" />
       Single Entry
     </Badge>
   );
 
   const vehicleChip =
     ticket.vehicleStatus === "WITH_US" ? (
-      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+        <Home className="size-3" />
         With Us
       </Badge>
     ) : (
-      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+      <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1">
+        <Navigation className="size-3" />
         Away
       </Badge>
     );
 
-  const statusChipMap: Record<Ticket["status"], { label: string; classes: string }> = {
-    CHECKED_IN: { label: "Checked In", classes: "bg-blue-50 text-blue-700 border-blue-200" },
-    READY_FOR_PICKUP: { label: "Ready", classes: "bg-amber-50 text-amber-700 border-amber-200" },
-    COMPLETED: { label: "Completed", classes: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    CANCELLED: { label: "Cancelled", classes: "bg-rose-50 text-rose-700 border-rose-200" },
+  const statusChipMap: Record<Ticket["status"], { label: string; classes: string; icon: React.ReactNode }> = {
+    CHECKED_IN: { 
+      label: "Checked In", 
+      classes: "bg-blue-50 text-blue-700 border-blue-200",
+      icon: <CheckCircle className="size-3" />
+    },
+    READY_FOR_PICKUP: { 
+      label: "Ready", 
+      classes: "bg-amber-50 text-amber-700 border-amber-200",
+      icon: <Package className="size-3" />
+    },
+    COMPLETED: { 
+      label: "Completed", 
+      classes: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      icon: <CircleCheckBig className="size-3" />
+    },
+    CANCELLED: { 
+      label: "Cancelled", 
+      classes: "bg-rose-50 text-rose-700 border-rose-200",
+      icon: <XCircle className="size-3" />
+    },
   };
 
   const currentStatusChip = statusChipMap[ticket.status];
   const paymentBadge = paymentComplete ? (
-    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+      <DollarSign className="size-3" />
       Paid
     </Badge>
   ) : (
-    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
+    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 gap-1">
+      <AlertCircle className="size-3" />
       Payment Needed
     </Badge>
   );
@@ -532,8 +620,14 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
     <Card
       className={cn(
         "flex h-full flex-col transition-shadow hover:shadow-lg",
-        // READY_FOR_PICKUP gets whole card colored, otherwise use vehicle status border
-        isReadyForPickup ? readyForPickupStyles : vehicleBorderStyles[ticket.vehicleStatus]
+        // READY_FOR_PICKUP gets whole card colored (overrides everything)
+        isReadyForPickup
+          ? readyForPickupStyles
+          : cn(
+              // Otherwise, apply vehicle status border AND paid background if applicable
+              vehicleBorderStyles[ticket.vehicleStatus],
+              paidButNotReadyStyles
+            )
       )}
     >
       <CardHeader className="space-y-1">
@@ -542,7 +636,31 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
             <CardTitle className="text-lg font-semibold">{ticket.ticketNumber}</CardTitle>
             {rateBadge}
             {privilegesBadge}
-            <Badge variant="outline" className={cn("capitalize", currentStatusChip.classes)}>
+            {hasInOutPrivileges && ticket.willReturn !== null && (
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "gap-1",
+                  ticket.willReturn 
+                    ? "bg-blue-50 text-blue-700 border-blue-200" 
+                    : "bg-gray-50 text-gray-700 border-gray-200"
+                )}
+              >
+                {ticket.willReturn ? (
+                  <>
+                    <RotateCcw className="size-3" />
+                    Returning
+                  </>
+                ) : (
+                  <>
+                    <X className="size-3" />
+                    Not Returning
+                  </>
+                )}
+              </Badge>
+            )}
+            <Badge variant="outline" className={cn("capitalize gap-1", currentStatusChip.classes)}>
+              {currentStatusChip.icon}
               {currentStatusChip.label}
             </Badge>
             {vehicleChip}
@@ -560,7 +678,8 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
         </div>
         <CardDescription className="flex items-center justify-between gap-2 text-sm">
           <span>{ticket.customerName}</span>
-          <Badge variant="outline" className="capitalize">
+          <Badge variant="outline" className="capitalize gap-1">
+            <Building className="size-3" />
             {ticket.location.name.toLowerCase()}
           </Badge>
         </CardDescription>
@@ -578,26 +697,6 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
             <span className="text-muted-foreground">Plate</span>
             <span className="font-mono text-xs uppercase">
               {ticket.licensePlate ?? "N/A"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Status</span>
-            <Badge
-              variant={
-                ticket.vehicleStatus === "WITH_US"
-                  ? "outline"
-                  : ticket.vehicleStatus === "AWAY"
-                    ? "secondary"
-                    : "outline"
-              }
-            >
-              {ticket.vehicleStatus === "WITH_US" ? "With Us" : "Away"}
-            </Badge>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Privileges</span>
-            <span className="font-medium text-foreground">
-              {hasInOutPrivileges ? "In/Out access" : "Single entry"}
             </span>
           </div>
           <div className="flex items-center justify-between text-sm">
@@ -734,19 +833,6 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, i
                   {option.label}
                 </DropdownMenuItem>
               ))}
-              {canDelete && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => onDelete(ticket)}
-                    disabled={isUpdating}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="mr-2 size-4" />
-                    Delete Ticket
-                  </DropdownMenuItem>
-                </>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
