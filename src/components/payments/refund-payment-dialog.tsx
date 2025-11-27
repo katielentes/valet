@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 
 const refundFormSchema = z.object({
   refundType: z.enum(["full", "partial"]),
-  amountCents: z.coerce.number().int().positive().optional(),
+  amountCents: z.number().int().positive().optional(),
   reason: z.string().max(500).optional(),
 });
 

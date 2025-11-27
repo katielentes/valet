@@ -109,7 +109,14 @@ export function registerTicketRoutes(router: Router) {
       });
 
       const formatted = tickets.map((ticket) => {
-        const projectedAmountCents = calculateProjectedAmountCents(ticket);
+        const ticketForPricing = {
+          ...ticket,
+          location: {
+            ...ticket.location,
+            pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+          },
+        };
+        const projectedAmountCents = calculateProjectedAmountCents(ticketForPricing);
         const completedPayments = ticket.payments.filter((payment) => payment.status === "COMPLETED");
         const amountPaidCents = completedPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
         const outstandingAmountCents = Math.max(projectedAmountCents - amountPaidCents, 0);
@@ -277,7 +284,14 @@ export function registerTicketRoutes(router: Router) {
       // Send payment link immediately when ticket is created (per payment flow plan)
       if (hasTwilioConfig && !isSmsSendingDisabled && ticket.customerPhone) {
         try {
-          const totalAmountCents = calculateProjectedAmountCents(ticket);
+          const ticketForPricing = {
+            ...ticket,
+            location: {
+              ...ticket.location,
+              pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+            },
+          };
+          const totalAmountCents = calculateProjectedAmountCents(ticketForPricing);
           
           if (totalAmountCents > 0 && hasStripeConfig) {
             // Send payment link with welcome message (per payment flow plan)
@@ -430,9 +444,8 @@ export function registerTicketRoutes(router: Router) {
         inOutPrivileges: existingTicket.inOutPrivileges,
         location: {
           identifier: existingTicket.location.identifier,
-          hourlyRateCents: existingTicket.location.hourlyRateCents,
           overnightRateCents: existingTicket.location.overnightRateCents,
-          hourlyTierHours: existingTicket.location.hourlyTierHours,
+          pricingTiers: (existingTicket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
         },
       });
 

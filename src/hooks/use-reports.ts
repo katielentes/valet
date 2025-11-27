@@ -11,6 +11,7 @@ export type ReportData = {
   locationId: string | null;
   revenue: {
     completed: number;
+    refunded: number;
     projected: number;
     total: number;
   };
@@ -36,6 +37,7 @@ export type ReportData = {
     name: string;
     identifier: string;
     completedRevenue: number;
+    refundedRevenue: number;
     projectedRevenue: number;
     completedTickets: number;
     openTickets: number;

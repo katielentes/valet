@@ -453,7 +453,7 @@ function ReportDisplay({ report }: ReportDisplayProps) {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Net Revenue</span>
               <span className="text-lg font-semibold text-purple-600">
-                {currencyFormatter.format(report.netRevenue / 100)}
+                {currencyFormatter.format((report.netRevenue ?? 0) / 100)}
               </span>
             </div>
           </CardContent>

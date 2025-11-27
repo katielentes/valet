@@ -6,7 +6,7 @@ import { resolveSession } from "../lib/session";
 import { hasStripeConfig, getStripeClient } from "../lib/stripe";
 import { hasTwilioConfig, isSmsSendingDisabled, sendSms } from "../lib/twilio";
 import { calculateProjectedAmountCents } from "../utils/pricing";
-import { Ticket, Location, UserRole } from "../../src/generated/prisma/client";
+import { Ticket, Location, UserRole, Prisma } from "../../src/generated/prisma/client";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -328,7 +328,15 @@ export function registerPaymentRoutes(router: Router) {
         return;
       }
 
-      const totalAmountCents = calculateProjectedAmountCents(ticket);
+      // Cast pricingTiers to the expected type for calculateProjectedAmountCents
+      const ticketForPricing = {
+        ...ticket,
+        location: {
+          ...ticket.location,
+          pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+        },
+      };
+      const totalAmountCents = calculateProjectedAmountCents(ticketForPricing);
 
       const { payment, paymentLinkUrl } = await sendPaymentLinkForTicket({
         ticket,
@@ -495,7 +503,7 @@ export function registerPaymentRoutes(router: Router) {
                 reason: reason ?? null,
               },
             ],
-          },
+          } as Prisma.InputJsonValue,
         },
       });
 

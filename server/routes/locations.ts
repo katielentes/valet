@@ -107,7 +107,7 @@ export function registerLocationRoutes(router: Router) {
 
     const parsed = createLocationSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: "Invalid location data", details: parsed.error.errors });
+      res.status(400).json({ error: "Invalid location data", details: parsed.error.issues });
       return;
     }
 
@@ -127,23 +127,19 @@ export function registerLocationRoutes(router: Router) {
         return;
       }
 
-      const createData: Record<string, unknown> = {
-        tenantId: session.tenantId,
-        name: locationData.name,
-        identifier: locationData.identifier,
-        taxRateBasisPoints: locationData.taxRateBasisPoints,
-        hotelSharePoints: locationData.hotelSharePoints,
-        overnightRateCents: locationData.overnightRateCents,
-        overnightInOutPrivileges: locationData.overnightInOutPrivileges,
-      };
-
-      // Convert pricingTiers to Prisma JSON format if provided
-      if (locationData.pricingTiers !== undefined) {
-        createData.pricingTiers = locationData.pricingTiers as Prisma.InputJsonValue;
-      }
-
       const newLocation = await prisma.location.create({
-        data: createData,
+        data: {
+          tenantId: session.tenantId,
+          name: locationData.name,
+          identifier: locationData.identifier,
+          taxRateBasisPoints: locationData.taxRateBasisPoints,
+          hotelSharePoints: locationData.hotelSharePoints,
+          overnightRateCents: locationData.overnightRateCents,
+          overnightInOutPrivileges: locationData.overnightInOutPrivileges,
+          pricingTiers: locationData.pricingTiers
+            ? (locationData.pricingTiers as Prisma.InputJsonValue)
+            : undefined,
+        },
       });
 
       // Create audit log entry
@@ -152,7 +148,7 @@ export function registerLocationRoutes(router: Router) {
           tenantId: session.tenantId,
           ticketId: null,
           userId: session.userId ?? null,
-          action: "LOCATION_CREATED",
+          action: "LOCATION_UPDATED",
           details: {
             locationId: newLocation.id,
             locationName: newLocation.name,

@@ -83,9 +83,9 @@ export function AppShell({ session, children }: AppShellProps) {
           identifier: session.user.location.identifier,
           taxRateBasisPoints: 0,
           hotelSharePoints: 0,
-          hourlyRateCents: 0,
-          hourlyTierHours: null,
           overnightRateCents: 0,
+          overnightInOutPrivileges: false,
+          pricingTiers: null,
         },
       ];
     }
@@ -117,7 +117,7 @@ export function AppShell({ session, children }: AppShellProps) {
         session,
         location: effectiveLocation,
         setLocation: handleLocationChange,
-        locations,
+        locations: locations as LocationRecord[],
         locationsLoading,
         role: userRole,
         assignedLocationId,

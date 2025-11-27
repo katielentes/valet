@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { Suspense } from "react";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +18,9 @@ export default function LoginPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <Suspense fallback={<div className="text-center">Loading...</div>}>
+            <LoginForm />
+          </Suspense>
         </CardContent>
       </Card>
     </div>

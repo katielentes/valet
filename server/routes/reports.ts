@@ -180,7 +180,14 @@ export function registerReportRoutes(router: Router) {
 
       // Calculate projected revenue from open tickets
       const projectedRevenue = openTickets.reduce((sum, ticket) => {
-        const projected = calculateProjectedAmountCents(ticket);
+        const ticketForPricing = {
+          ...ticket,
+          location: {
+            ...ticket.location,
+            pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+          },
+        };
+        const projected = calculateProjectedAmountCents(ticketForPricing);
         const paid = ticket.payments.reduce((pSum, p) => pSum + p.amountCents, 0);
         return sum + Math.max(0, projected - paid);
       }, 0);
@@ -192,6 +199,7 @@ export function registerReportRoutes(router: Router) {
           name: string;
           identifier: string;
           completedRevenue: number;
+          refundedRevenue: number;
           projectedRevenue: number;
           completedTickets: number;
           openTickets: number;
@@ -309,7 +317,14 @@ export function registerReportRoutes(router: Router) {
           };
         }
 
-        const projected = calculateProjectedAmountCents(ticket);
+        const ticketForPricing = {
+          ...ticket,
+          location: {
+            ...ticket.location,
+            pricingTiers: (ticket.location.pricingTiers as Array<{ maxHours: number | null; rateCents: number; inOutPrivileges?: boolean }> | null) ?? null,
+          },
+        };
+        const projected = calculateProjectedAmountCents(ticketForPricing);
         const paid = ticket.payments.reduce((sum, p) => sum + p.amountCents, 0);
         const outstanding = Math.max(0, projected - paid);
 
