@@ -496,5 +496,64 @@ export function registerTicketRoutes(router: Router) {
       res.status(500).json({ error: "Failed to update ticket" });
     }
   });
+
+  router.delete("/api/tickets/:id", async (req, res) => {
+    const session = await resolveSession(req);
+    if (!session) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    // Only ADMIN and MANAGER roles can delete tickets
+    if (session.user.role !== "ADMIN" && session.user.role !== "MANAGER") {
+      res.status(403).json({ error: "Only admins and managers can delete tickets" });
+      return;
+    }
+
+    const ticketId = req.params.id;
+
+    try {
+      const existingTicket = await prisma.ticket.findFirst({
+        where: { id: ticketId, tenantId: session.tenantId },
+        include: {
+          messages: true,
+          payments: true,
+          comments: true,
+          auditLogs: true,
+        },
+      });
+
+      if (!existingTicket) {
+        res.status(404).json({ error: "Ticket not found" });
+        return;
+      }
+
+      // Create audit log for deletion BEFORE deleting the ticket
+      await prisma.auditLog.create({
+        data: {
+          tenantId: session.tenantId,
+          ticketId: ticketId, // Reference the ticket before deletion
+          userId: session.userId ?? null,
+          action: "TICKET_DELETED",
+          details: {
+            ticketNumber: existingTicket.ticketNumber,
+            deletedBy: session.user.name,
+            deletedByRole: session.user.role,
+            message: `Ticket ${existingTicket.ticketNumber} was permanently deleted`,
+          },
+        },
+      });
+
+      // Delete the ticket (cascade deletes will handle related records)
+      await prisma.ticket.delete({
+        where: { id: ticketId },
+      });
+
+      res.status(200).json({ message: "Ticket deleted successfully" });
+    } catch (error) {
+      console.error("Failed to delete ticket", error);
+      res.status(500).json({ error: "Failed to delete ticket" });
+    }
+  });
 }
 

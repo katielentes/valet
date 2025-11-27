@@ -175,5 +175,26 @@ export function useCreateTicketMutation() {
   });
 }
 
+export function useDeleteTicketMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (ticketId: string) => {
+      const response = await fetch(`/api/tickets/${ticketId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload?.error ?? "Failed to delete ticket");
+      }
+      return;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+    },
+  });
+}
+
 export type UpdateTicketData = UpdateTicketVariables["data"];
 

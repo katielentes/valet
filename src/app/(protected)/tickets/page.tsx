@@ -9,6 +9,7 @@ import {
   Send,
   CarFront,
   MoreHorizontal,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -32,15 +33,28 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   useTicketsQuery,
   useUpdateTicketMutation,
+  useDeleteTicketMutation,
   type Ticket,
   type TicketFilters,
   type UpdateTicketData,
 } from "@/hooks/use-tickets";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const FILTERS = [
@@ -51,7 +65,7 @@ const FILTERS = [
 ];
 
 export default function TicketsPage() {
-  const { location } = useAppShell();
+  const { location, role } = useAppShell();
   const [activeFilter, setActiveFilter] = useState(FILTERS[0]);
 
   const filters: TicketFilters = useMemo(() => {
@@ -66,6 +80,7 @@ export default function TicketsPage() {
   const [ticketForMessage, setTicketForMessage] = useState<Ticket | null>(null);
   const [ticketForPayment, setTicketForPayment] = useState<Ticket | null>(null);
   const [ticketForEdit, setTicketForEdit] = useState<Ticket | null>(null);
+  const [ticketForDelete, setTicketForDelete] = useState<Ticket | null>(null);
   const [newTicketOpen, setNewTicketOpen] = useState(false);
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -82,7 +97,9 @@ export default function TicketsPage() {
   };
 
   const updateTicket = useUpdateTicketMutation();
+  const deleteTicket = useDeleteTicketMutation();
   const [updatingTicketId, setUpdatingTicketId] = useState<string | null>(null);
+  const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
 
   const handleTicketUpdate = async (ticketId: string, data: UpdateTicketData) => {
     setUpdatingTicketId(ticketId);
@@ -90,6 +107,20 @@ export default function TicketsPage() {
       await updateTicket.mutateAsync({ id: ticketId, data });
     } finally {
       setUpdatingTicketId((current) => (current === ticketId ? null : current));
+    }
+  };
+
+  const handleTicketDelete = async () => {
+    if (!ticketForDelete) return;
+    setDeletingTicketId(ticketForDelete.id);
+    try {
+      await deleteTicket.mutateAsync(ticketForDelete.id);
+      toast.success(`Ticket ${ticketForDelete.ticketNumber} deleted`);
+      setTicketForDelete(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete ticket");
+    } finally {
+      setDeletingTicketId(null);
     }
   };
 
@@ -198,7 +229,37 @@ export default function TicketsPage() {
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
           Unable to load tickets right now. Please try again shortly.
         </div>
-      ) : null}
+        ) : null}
+
+      <AlertDialog open={!!ticketForDelete} onOpenChange={(open) => !open && setTicketForDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete ticket <strong>{ticketForDelete?.ticketNumber}</strong>? This will
+              permanently delete the ticket and all associated messages, payments, and audit logs. This action
+              cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleTicketDelete}
+              disabled={deletingTicketId === ticketForDelete?.id}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deletingTicketId === ticketForDelete?.id ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="size-4 animate-spin" />
+                  Deleting...
+                </span>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <TicketResults
         loading={isLoading}
@@ -206,8 +267,10 @@ export default function TicketsPage() {
         onNotify={handleOpenSendDialog}
         onEdit={handleOpenEditDialog}
         onPayment={handleOpenPaymentDialog}
+        onDelete={setTicketForDelete}
         onUpdate={handleTicketUpdate}
         updatingTicketId={updatingTicketId}
+        canDelete={role === "ADMIN" || role === "MANAGER"}
       />
     </div>
   );
@@ -275,8 +338,10 @@ type TicketResultsProps = {
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
   onPayment: (ticket: Ticket) => void;
+  onDelete: (ticket: Ticket) => void;
   onUpdate: (ticketId: string, data: UpdateTicketData) => Promise<void>;
   updatingTicketId: string | null;
+  canDelete: boolean;
 };
 
 function TicketResults({
@@ -285,8 +350,10 @@ function TicketResults({
   onNotify,
   onEdit,
   onPayment,
+  onDelete,
   onUpdate,
   updatingTicketId,
+  canDelete,
 }: TicketResultsProps) {
   if (loading) {
     return (
@@ -341,8 +408,10 @@ function TicketResults({
           onNotify={onNotify}
           onEdit={onEdit}
           onPayment={onPayment}
+          onDelete={onDelete}
           onUpdate={onUpdate}
           isUpdating={updatingTicketId === ticket.id}
+          canDelete={canDelete}
         />
       ))}
     </div>
@@ -354,11 +423,13 @@ type TicketCardProps = {
   onNotify: (ticket: Ticket) => void;
   onEdit: (ticket: Ticket) => void;
   onPayment: (ticket: Ticket) => void;
+  onDelete: (ticket: Ticket) => void;
   onUpdate: TicketResultsProps["onUpdate"];
   isUpdating: boolean;
+  canDelete: boolean;
 };
 
-function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating }: TicketCardProps) {
+function TicketCard({ ticket, onNotify, onEdit, onPayment, onDelete, onUpdate, isUpdating, canDelete }: TicketCardProps) {
   const projectedAmount = `$${(ticket.projectedAmountCents / 100).toFixed(2)}`;
   const outstandingAmount = ticket.outstandingAmountCents / 100;
   const amountPaid = ticket.amountPaidCents / 100;
@@ -663,6 +734,19 @@ function TicketCard({ ticket, onNotify, onEdit, onPayment, onUpdate, isUpdating 
                   {option.label}
                 </DropdownMenuItem>
               ))}
+              {canDelete && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => onDelete(ticket)}
+                    disabled={isUpdating}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    <Trash2 className="mr-2 size-4" />
+                    Delete Ticket
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
