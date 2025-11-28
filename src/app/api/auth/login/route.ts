@@ -27,10 +27,10 @@ export async function POST(req: NextRequest) {
     const parsed = loginSchema.safeParse(body);
 
     if (!parsed.success) {
-      console.error("Login validation error:", parsed.error.errors);
+      console.error("Login validation error:", parsed.error.issues);
       return NextResponse.json({ 
         error: "Invalid email or password",
-        details: parsed.error.errors 
+        details: parsed.error.issues 
       }, { status: 400 });
     }
 

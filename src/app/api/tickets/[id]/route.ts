@@ -38,10 +38,10 @@ export async function PATCH(
   const parsed = updateSchema.safeParse(body);
 
   if (!parsed.success) {
-    console.error("Ticket update validation error:", parsed.error.errors);
+    console.error("Ticket update validation error:", parsed.error.issues);
     return NextResponse.json({ 
       error: "Invalid ticket data",
-      details: parsed.error.errors 
+      details: parsed.error.issues 
     }, { status: 400 });
   }
 
